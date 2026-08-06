@@ -32,6 +32,9 @@ from rules import GoodsReceipt, Invoice, PoHeader, PoItem, SapContext
 D = Decimal
 TIMEOUT = 180
 ODATA_DATE = re.compile(r"/Date\((-?\d+)\)/")
+EMPTY_SUCCESS = re.compile(r"^Request successful\. Status: 2\d\d$")
+PARKED = "A"  # SupplierInvoiceStatus for a held/draft document
+STATUS_BATCH = 20  # keys per status lookup, keeps the $filter URL short
 
 
 class SapError(RuntimeError):
@@ -186,6 +189,12 @@ class SapClient:
 
         result = self._rpc("tools/call", {"name": "invoke_sap_odata_service", "arguments": arguments})
         text = result["content"][0]["text"]
+
+        # A successful DELETE answers 204 No Content, and the MCP tool reports
+        # an empty body as plain prose rather than JSON. That is a success.
+        if EMPTY_SUCCESS.match(text.strip()):
+            return {}
+
         try:
             payload = json.loads(text)
         except json.JSONDecodeError as exc:
@@ -263,17 +272,56 @@ class SapClient:
         ]
 
     def get_invoiced_quantity(self, purchase_order: str, item: str) -> Decimal:
-        """How much of this PO line has already been invoiced."""
-        raw = self.odata(
+        """How much of this PO line has genuinely been invoiced.
+
+        Parked invoices are excluded. A parked document is a draft: it creates
+        no accounting entry and does not consume the purchase order, which is
+        exactly why parking is safe on a shared system. Counting them would
+        make a PO look consumed because another team left drafts against it,
+        and every invoice after that would raise a false quantity exception.
+
+        The item rows carry no status, and there is no navigation from the item
+        to its header, so the status join is a second batched read.
+        """
+        rows = self.odata(
             "API_SUPPLIERINVOICE_PROCESS_SRV/A_SuplrInvcItemPurOrdRef"
             f"?$filter=PurchaseOrder eq '{purchase_order}' and PurchaseOrderItem eq '{item}'"
             "&$format=json"
+        ).get("d", {}).get("results", [])
+        if not rows:
+            return D("0")
+
+        parked = self._parked_invoices(
+            {(row["SupplierInvoice"], row["FiscalYear"]) for row in rows}
         )
         return sum(
             (D(row.get("QuantityInPurchaseOrderUnit") or "0")
-             for row in raw.get("d", {}).get("results", [])),
+             for row in rows
+             if (row["SupplierInvoice"], row["FiscalYear"]) not in parked),
             D("0"),
         )
+
+    def _parked_invoices(self, keys: set[tuple[str, str]]) -> set[tuple[str, str]]:
+        """Which of these supplier invoices are still parked (status A)."""
+        ordered = sorted(keys)
+        parked: set[tuple[str, str]] = set()
+        for start in range(0, len(ordered), STATUS_BATCH):
+            chunk = ordered[start:start + STATUS_BATCH]
+            clause = " or ".join(
+                f"(SupplierInvoice eq '{inv}' and FiscalYear eq '{year}')"
+                for inv, year in chunk
+            )
+            raw = self.odata(
+                "API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice"
+                f"?$filter={clause}"
+                "&$select=SupplierInvoice,FiscalYear,SupplierInvoiceStatus&$format=json"
+            )
+            parked.update(
+                (row["SupplierInvoice"], row["FiscalYear"])
+                for row in raw.get("d", {}).get("results", [])
+                if row.get("SupplierInvoiceStatus") == PARKED
+            )
+        return parked
 
     def get_used_references(self, invoicing_party: str) -> frozenset[str]:
         """References already consumed for this vendor, scoped to our prefix.
@@ -349,8 +397,11 @@ class SapClient:
                 }
             ],
         }
+        # No $format on a POST: SAP rejects system query options on writes with
+        # "The Data Services Request contains SystemQueryOptions that are not
+        # allowed for this Request Type". The Accept header already asks JSON.
         raw = self.odata(
-            "API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice?$format=json",
+            "API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice",
             method="POST",
             body=body,
         )["d"]

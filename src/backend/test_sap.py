@@ -296,6 +296,91 @@ def test_park_body_is_a_parked_deep_insert():
     assert line["QuantityInPurchaseOrderUnit"] == "10"
 
 
+def test_post_carries_no_system_query_options():
+    """SAP rejects a write that carries $format: "The Data Services Request
+    contains SystemQueryOptions that are not allowed for this Request Type"."""
+    captured = {}
+
+    class Recorder(FakeClient):
+        def odata(self, path, method="GET", body=None):
+            if method == "POST":
+                captured["path"] = path
+                return {"d": {"SupplierInvoice": "1", "FiscalYear": "2025"}}
+            return super().odata(path, method, body)
+
+    Recorder({}).park(_invoice())
+    assert "$" not in captured["path"]
+
+
+def test_empty_success_response_is_not_an_error():
+    """A successful DELETE answers 204 No Content and the MCP tool reports the
+    empty body as prose, not JSON. That is success, not a parse failure."""
+
+    class Transport(SapClient):
+        def __init__(self, text):
+            super().__init__(CONFIG)
+            self._initialised = True
+            self.text = text
+
+        def _rpc(self, method, params=None):
+            return {"content": [{"text": self.text}]}
+
+    assert Transport("Request successful. Status: 204").odata("x", "DELETE") == {}
+    assert Transport("Request successful. Status: 200").odata("x", "DELETE") == {}
+
+    try:
+        Transport("<html>gateway timeout</html>").odata("x")
+    except SapError as exc:
+        assert "non-JSON" in str(exc)
+    else:
+        raise AssertionError("genuine garbage must still raise")
+
+
+def test_parked_invoices_do_not_consume_the_purchase_order():
+    """A parked document is a draft: no accounting entry, no PO consumption.
+    Counting other teams' drafts would make an open PO look fully invoiced and
+    raise a false quantity exception on every later invoice."""
+    refs = {"d": {"results": [
+        {"SupplierInvoice": "5100001500", "FiscalYear": "2025", "QuantityInPurchaseOrderUnit": "5"},
+        {"SupplierInvoice": "5100001501", "FiscalYear": "2025", "QuantityInPurchaseOrderUnit": "5"},
+        {"SupplierInvoice": "5100001210", "FiscalYear": "2023", "QuantityInPurchaseOrderUnit": "10"},
+    ]}}
+    statuses = {"d": {"results": [
+        {"SupplierInvoice": "5100001500", "FiscalYear": "2025", "SupplierInvoiceStatus": "A"},
+        {"SupplierInvoice": "5100001501", "FiscalYear": "2025", "SupplierInvoiceStatus": "A"},
+        {"SupplierInvoice": "5100001210", "FiscalYear": "2023", "SupplierInvoiceStatus": "5"},
+    ]}}
+    client = FakeClient({
+        "$select=SupplierInvoice,FiscalYear,SupplierInvoiceStatus": statuses,
+        "A_SuplrInvcItemPurOrdRef": refs,
+    })
+    # Only the posted document counts: 10, not 20.
+    assert client.get_invoiced_quantity("4500001463", "10") == D("10")
+
+
+def test_invoiced_quantity_skips_the_status_lookup_when_nothing_references_the_po():
+    client = FakeClient({"A_SuplrInvcItemPurOrdRef": {"d": {"results": []}}})
+    assert client.get_invoiced_quantity("4500001563", "10") == D("0")
+    assert len(client.paths) == 1
+
+
+def test_status_lookup_is_batched():
+    """One request per 20 keys, so a heavily used PO does not build a URL SAP
+    will reject for length."""
+    refs = {"d": {"results": [
+        {"SupplierInvoice": f"51000015{n:02d}", "FiscalYear": "2025",
+         "QuantityInPurchaseOrderUnit": "1"}
+        for n in range(45)
+    ]}}
+    client = FakeClient({
+        "$select=SupplierInvoice,FiscalYear,SupplierInvoiceStatus": {"d": {"results": []}},
+        "A_SuplrInvcItemPurOrdRef": refs,
+    })
+    client.get_invoiced_quantity("4500001463", "10")
+    lookups = [p for p in client.paths if "SupplierInvoiceStatus" in p]
+    assert len(lookups) == 3  # 45 keys -> ceil(45/20)
+
+
 def test_park_never_omits_the_unique_reference():
     """Without it the shared system's duplicate check collides between teams."""
     captured = {}
