@@ -92,7 +92,8 @@ def invoke_sap_odata_service(odata_api_url: str, http_method: str = "GET", reque
         headers['Cookie'] = cookie_string
     
     logger.info(f"Making {http_method} request to {odata_api_url}")
-    logger.info(f"Headers: {headers}")
+    # Do not log `headers` - it carries the Basic auth credentials and the session cookie.
+    logger.info(f"Header keys: {sorted(headers)}")
     if request_body:
         logger.info(f"Request body: {request_body}")
     
@@ -107,7 +108,8 @@ def invoke_sap_odata_service(odata_api_url: str, http_method: str = "GET", reque
     )
     
     logger.info(f"Response status code: {response.status_code}")
-    logger.info(f"Response headers: {response.headers}")
+    # Do not log `response.headers` - it carries x-csrf-token and Set-Cookie.
+    logger.info(f"Response header keys: {sorted(response.headers)}")
     
     if response.content:
         try:

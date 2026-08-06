@@ -35,7 +35,8 @@ auth_config = {
     }
 }
 
-print(cognito_config)
+# Do not print `cognito_config` - it carries client_credentials_secret.
+print(f"Using Cognito client: {cognito_config['client_credentials_id']}")
 
 print("Configuring AgentCore Runtime...")
 response = runtime.configure(
