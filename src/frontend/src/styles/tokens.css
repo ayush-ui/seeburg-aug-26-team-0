@@ -1,0 +1,173 @@
+/* Material 3 token system for the AP workspace.
+ *
+ * Per challenges/ui-design-direction.md: dark is the primary mode, #B71818 is
+ * the primary colour, #263BF1 the secondary, teal is reserved for success, and
+ * errors take a distinct colour. M3 Expressive is excluded.
+ *
+ * Two notes on how the mandated hexes are applied:
+ *
+ * 1. #B71818 is used as a *surface* colour (filled buttons, selection stripes,
+ *    progress) where white sits on top at 6.6:1. It is never used as text on a
+ *    dark ground, where it would fall to 2.6:1. Text accents use the secondary.
+ * 2. #263BF1 is dark; on a near-black canvas it fails as text, so the dark
+ *    theme carries a lighter tone of the same hue. That is standard M3 tonal
+ *    practice, not a different colour.
+ *
+ * Status never relies on colour alone - every chip carries an icon and a word -
+ * and error is always an outlined, tinted chip while primary is always a solid
+ * fill, so the two reds never read as the same thing.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* --- brand ------------------------------------------------------------ */
+  --md-primary: #b71818;
+  --md-primary-hover: #cd2020;
+  --md-primary-press: #9c1212;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #3a0d0d;
+  --md-on-primary-container: #ffd9d6;
+
+  --md-secondary: #8c9bff;
+  --md-secondary-strong: #6b7dff;
+  --md-on-secondary: #0d1030;
+  --md-secondary-container: #1b2150;
+  --md-on-secondary-container: #dbe0ff;
+
+  /* --- semantic status -------------------------------------------------- */
+  --md-success: #4dd6b4;
+  --md-success-container: #0e2a24;
+  --md-on-success-container: #a5efdc;
+
+  --md-warning: #e3b341;
+  --md-warning-container: #33290f;
+  --md-on-warning-container: #f6dfa4;
+
+  --md-error: #ff9a93;
+  --md-error-container: #3b1512;
+  --md-on-error-container: #ffdad6;
+
+  --md-info: #8c9bff;
+  --md-info-container: #1b2150;
+
+  /* --- neutral surfaces ------------------------------------------------- */
+  --md-surface: #0f1113;
+  --md-surface-lowest: #0a0c0e;
+  --md-surface-low: #14171a;
+  --md-surface-container: #191c1f;
+  --md-surface-high: #1f2326;
+  --md-surface-highest: #262a2e;
+
+  --md-on-surface: #e3e5e8;
+  --md-on-surface-variant: #a8aeb4;
+  --md-on-surface-faint: #767d84;
+
+  --md-outline: #3a4045;
+  --md-outline-variant: #24282c;
+
+  --md-scrim: rgba(0, 0, 0, 0.62);
+  --md-hover-overlay: rgba(255, 255, 255, 0.05);
+  --md-press-overlay: rgba(255, 255, 255, 0.09);
+  --md-selected-overlay: rgba(183, 24, 24, 0.14);
+
+  /* --- elevation (controlled, per the direction) ------------------------ */
+  --md-elev-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --md-elev-2: 0 2px 6px rgba(0, 0, 0, 0.45);
+  --md-elev-3: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* --- type ------------------------------------------------------------- */
+  --md-font: "Roboto", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --md-font-mono: "Roboto Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  --md-display: 1.75rem;      /* page title */
+  --md-title-lg: 1.125rem;    /* panel title */
+  --md-title: 0.9375rem;      /* section title */
+  --md-body: 0.9375rem;       /* prose, chat */
+  --md-body-sm: 0.875rem;     /* table data - never below 12px */
+  --md-label: 0.75rem;        /* uppercase labels */
+  --md-label-sm: 0.6875rem;
+
+  /* --- compact spacing scale (density 9) -------------------------------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  /* --- target sizes ------------------------------------------------------
+   * 44px for primary and destructive controls; 32px for in-row controls on a
+   * pointer-driven desktop workspace, with 8px spacing between them.        */
+  --target-primary: 44px;
+  --target-dense: 32px;
+  --row-height: 44px;
+
+  /* --- motion: only to explain a state change --------------------------- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 260ms;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --md-primary: #b71818;
+  --md-primary-hover: #a01414;
+  --md-primary-press: #870f0f;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #ffdad5;
+  --md-on-primary-container: #410002;
+
+  --md-secondary: #263bf1;
+  --md-secondary-strong: #1c2cc4;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #dfe1ff;
+  --md-on-secondary-container: #00105c;
+
+  --md-success: #0a6152;
+  --md-success-container: #d5f2ea;
+  --md-on-success-container: #00201a;
+
+  --md-warning: #855400;
+  --md-warning-container: #fbeaca;
+  --md-on-warning-container: #2a1800;
+
+  --md-error: #b3261e;
+  --md-error-container: #fbe3e0;
+  --md-on-error-container: #410e0b;
+
+  --md-info: #263bf1;
+  --md-info-container: #dfe1ff;
+
+  --md-surface: #fbfafa;
+  --md-surface-lowest: #ffffff;
+  --md-surface-low: #f5f4f4;
+  --md-surface-container: #efeeee;
+  --md-surface-high: #e9e8e8;
+  --md-surface-highest: #e3e2e2;
+
+  --md-on-surface: #1a1c1e;
+  --md-on-surface-variant: #494c50;
+  --md-on-surface-faint: #6f7378;
+
+  --md-outline: #b6babe;
+  --md-outline-variant: #dcdee0;
+
+  --md-scrim: rgba(0, 0, 0, 0.36);
+  --md-hover-overlay: rgba(0, 0, 0, 0.045);
+  --md-press-overlay: rgba(0, 0, 0, 0.08);
+  --md-selected-overlay: rgba(183, 24, 24, 0.09);
+
+  --md-elev-1: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --md-elev-2: 0 2px 6px rgba(0, 0, 0, 0.12);
+  --md-elev-3: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
