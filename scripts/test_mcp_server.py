@@ -63,7 +63,7 @@ def test_deployed_mcp_server():
             "params": {
                 "name": "invoke_sap_odata_service",
                 "arguments": {
-                    "odata_api_url": "https://YOUR-SAP-HOSTNAME/sap/opu/odata/sap/API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice(SupplierInvoice='5100000092',FiscalYear='2017')?$expand=to_SuplrInvcItemPurOrdRef",
+                    "odata_api_url": "https://sap-workshop-720f09b6b2563946.events.sap.aws.dev/sap/opu/odata/sap/API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice(SupplierInvoice='5100000092',FiscalYear='2017')?$expand=to_SuplrInvcItemPurOrdRef",
                     "http_method": "GET"
                 }
             }

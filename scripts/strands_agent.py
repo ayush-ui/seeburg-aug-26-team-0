@@ -19,16 +19,16 @@ for name in ['httpx', 'mcp', 'strands']: logging.getLogger(name).setLevel(loggin
 def search_sap_api_knowledge_base(query: str) -> str:
     """CRITICAL: Query OpenAPI schemas for exact SAP OData API URLs. MUST return complete URLs with hostname, service path, and parameters.
     
-    MANDATORY: All URLs MUST use hostname: https://<REPLACE-WITH-YOUR-HOSTNAME>
+    MANDATORY: All URLs MUST use hostname: https://sap-workshop-720f09b6b2563946.events.sap.aws.dev
     
     Examples:
-    - Sales Order: https://<REPLACE-WITH-YOUR-HOSTNAME>/sap/opu/odata/sap/API_SALES_ORDER_SRV/A_SalesOrder('127')
-    - Sales Order Items: https://<REPLACE-WITH-YOUR-HOSTNAME>/sap/opu/odata/sap/API_SALES_ORDER_SRV/A_SalesOrder('127')/to_Item
-    - GL Account filtered: https://<REPLACE-WITH-YOUR-HOSTNAME>/sap/opu/odata/sap/API_GLACCOUNTLINEITEM/GLAccountLineItem?$filter=CompanyCode eq '1010' and IsReversal eq true
+    - Sales Order: https://sap-workshop-720f09b6b2563946.events.sap.aws.dev/sap/opu/odata/sap/API_SALES_ORDER_SRV/A_SalesOrder('127')
+    - Sales Order Items: https://sap-workshop-720f09b6b2563946.events.sap.aws.dev/sap/opu/odata/sap/API_SALES_ORDER_SRV/A_SalesOrder('127')/to_Item
+    - GL Account filtered: https://sap-workshop-720f09b6b2563946.events.sap.aws.dev/sap/opu/odata/sap/API_GLACCOUNTLINEITEM/GLAccountLineItem?$filter=CompanyCode eq '1010' and IsReversal eq true
     
     NEVER fabricate URLs. ONLY use exact paths from OpenAPI schema.
     """
-    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="<REPLACE-WITH-YOUR-KNOWLEGE-BASE-ID-SAP-API>", retrievalQuery={'text': query})
+    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="M6GBMOSKQX", retrievalQuery={'text': query})
     results = [result.get('content', {}).get('text', '') for result in response.get('retrievalResults', []) if result.get('content', {}).get('text', '')]
     return '\n\n'.join(results) if results else "No relevant information found in knowledge base."
     
@@ -42,7 +42,7 @@ def search_sap_sops(query: str) -> str:
     
     NEVER invent exceptions or resolutions. ONLY return documented procedures from knowledge base.
     """
-    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="<REPLACE-WITH-YOUR-KNOWLEGE-BASE-ID-SOPS>", retrievalQuery={'text': query})
+    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="HRQMR9REUCexcd", retrievalQuery={'text': query})
     results = [result.get('content', {}).get('text', '') for result in response.get('retrievalResults', []) if result.get('content', {}).get('text', '')]
     return '\n\n'.join(results) if results else "No relevant information found in knowledge base."
 
