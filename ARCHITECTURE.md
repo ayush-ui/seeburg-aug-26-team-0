@@ -35,18 +35,27 @@ flowchart TB
         Orch[Orchestrator agent]
         Extract[extract.py<br/>Extractor agent]
         Rules[rules.py<br/>Validator - pure function]
+        Know[knowledge.py<br/>Retriever]
         Sap[sap.py<br/>SAP gateway]
         Store[(Batch store<br/>+ approval tokens)]
     end
 
     subgraph AWS["AWS"]
         Bedrock[Amazon Bedrock<br/>Claude Sonnet 4.5]
+        KBsop[(Knowledge base<br/>SOPs)]
+        KBapi[(Knowledge base<br/>OData specs)]
         Cognito[Cognito<br/>M2M client credentials]
         MCP[MCP server on<br/>Bedrock AgentCore Runtime]
         Secrets[Secrets Manager<br/>SAP credentials]
     end
 
-    S4[(SAP S/4HANA<br/>OData)]
+    S3sop[(S3 - SOP documents)] --> KBsop
+    S3api[(S3 - SAP API library)] --> KBapi
+
+    subgraph SAPVPC["SAP VPC"]
+        ALB[Application<br/>Load Balancer]
+        S4[(SAP S/4HANA)]
+    end
 
     User --> Chat
     Chat --> Orch
@@ -55,16 +64,21 @@ flowchart TB
 
     Orch --> Extract
     Orch --> Rules
+    Orch --> Know
     Orch --> Sap
     Orch --> Store
 
     Extract --> Bedrock
     Orch --> Bedrock
 
+    Know -->|retrieve by SOP clause| KBsop
+    Know -->|retrieve OData path| KBapi
+
     Sap --> Cognito
     Sap -->|JSON-RPC / streamable HTTP| MCP
     MCP --> Secrets
-    MCP -->|OData v2| S4
+    MCP -->|OData v2 + retry| ALB
+    ALB --> S4
 
     Rules -.->|no I/O at all| Rules
 ```
@@ -79,6 +93,7 @@ clock, no globals. Everything it needs arrives as an argument.
 | Orchestrator | LLM agent | Claude Sonnet 4.5 | The chat surface. Chooses tools, sequences the workflow, answers follow-up questions, asks for approval. Never decides pass/fail itself. |
 | Extractor | LLM agent | Claude Sonnet 4.5 (vision) | One invoice document to one structured `Invoice`. Normalises German decimal commas, dates, units. Returns per-field confidence. |
 | Validator | Deterministic | none | 17 rules against `SapContext`. Returns `Finding` objects with SOP references and approval routing. |
+| Retriever | Retrieval | embeddings | Pulls the resolution procedure for a SOP clause the validator already named, and finds OData paths for questions outside the fixed rule set. Never produces a verdict. |
 | SAP gateway | Deterministic | none | Every SAP read and the single write, routed through MCP. |
 | Poster | Deterministic | none | Parks each passing invoice after approval; records document numbers. |
 
@@ -97,6 +112,7 @@ sequenceDiagram
     participant X as Extractor
     participant B as Bedrock
     participant R as rules.py
+    participant K as knowledge.py
     participant S as sap.py
     participant M as MCP / AgentCore
     participant SAP as SAP S/4HANA
@@ -122,6 +138,10 @@ sequenceDiagram
         O->>R: evaluate(invoice, context)
         R-->>O: 17 Findings
     end
+
+    Note over O,K: only for invoices that failed or warned
+    O->>K: resolution_steps(sop_ref)
+    K-->>O: procedure, owner, timeframe from the SOP
 
     O-->>FE: batch id + consolidated summary
     FE-->>U: 5 PARK / 1 SKIP, per-rule detail
@@ -156,7 +176,9 @@ backend; the MCP server is the only thing holding SAP credentials.
 3. **JSON-RPC.** A `tools/call` request naming `invoke_sap_odata_service`, with
    the full OData URL, HTTP method and optional body as arguments.
 4. **MCP server.** Running on AgentCore Runtime, it fetches the SAP credentials
-   from Secrets Manager, obtains a CSRF token, and issues the OData request.
+   from Secrets Manager, obtains a CSRF token, and issues the OData request —
+   retrying on transient failures. SAP sits in its own VPC behind an
+   Application Load Balancer, so the call leaves AWS and comes back in.
 5. **Response.** streamable-HTTP replies as server-sent events; the payload is
    the `data:` line. A 204 answers with an empty body, which the tool reports
    as prose rather than JSON.
@@ -226,6 +248,65 @@ nicety.
 | SAP read errors | Raised, not swallowed. A "not found" is a verdict; a backend outage is a fault. |
 | Park fails mid-batch | Recorded per invoice. Already-parked documents stay; they are drafts and are individually deletable. |
 
+## Knowledge grounding
+
+Two Bedrock Knowledge Bases sit behind the orchestrator, each fed from an S3
+bucket. Both are already deployed.
+
+| Knowledge base | Id | Contents |
+|---|---|---|
+| SOPs | `HRQMR9REUCexcd` | `AP-SOP-001` three-way match exception handling, duplicate invoice SOP |
+| SAP API library | `M6GBMOSKQX` | OpenAPI specifications for the OData services |
+
+### The boundary that matters
+
+**Retrieval never produces a verdict.** A vector search that decides whether an
+invoice is payable is a vector search that will eventually decide wrongly and
+quietly. The division of labour is fixed:
+
+| Question | Answered by |
+|---|---|
+| Does this invoice pass? | `rules.py` — deterministic |
+| Why, in business terms? | `rules.py`, `Finding.message` |
+| Which SOP clause governs it? | `rules.py`, `Finding.sop_ref` |
+| What should the clerk do about it? | SOP knowledge base |
+| Which OData path answers an ad-hoc question? | API knowledge base |
+
+The SOP retrieval is keyed by the clause the validator has *already* named. It
+is a lookup, not a search for the answer, so retrieval cannot drift the outcome
+— at worst it returns unhelpful guidance next to a verdict that is still
+correct.
+
+### What this adds
+
+`rules.py` produces the finding:
+
+> Unit price EUR 11.71 is 3.17% above the agreed Purchase Order price of
+> EUR 11.35 — a difference of EUR 3.60 on this line. `AP-SOP-001 6.1 / 8.1`
+
+The SOP knowledge base then supplies what happens next, grounded in the actual
+document rather than invented: check whether a PO amendment covers the
+difference, contact Procurement to verify the increase on days 1–2, escalate to
+the AP Manager if unresolved after five business days.
+
+Verdict from code, remediation from the SOP. That is the "auto-suggest a
+correction" stretch goal without a model guessing at company policy.
+
+The API knowledge base covers the other direction. The six fixed reads serve
+the 17 rules; when a user asks something outside them — "has this vendor been
+short-delivered before?" — the orchestrator needs to discover an OData path it
+was never hardcoded with.
+
+### `knowledge.py`
+
+```
+resolution_steps(sop_ref, exception_type) -> list[Step]   # SOP KB
+find_odata_path(question)                 -> str          # API KB
+```
+
+Both call `bedrock-agent-runtime.retrieve`. Retrieval runs only for invoices
+that failed or warned, so a clean batch costs zero retrieval calls.
+
 ## Determinism and the tolerance table
 
 Routing thresholds come from `AP-SOP-001` section 8.1 and live in a dictionary
@@ -258,6 +339,7 @@ without a second model call.
 | `src/backend/rules.py` | Complete, 17 rules, 22 tests |
 | `src/backend/sap.py` | Complete, 23 tests, park and delete verified against SAP |
 | `src/backend/extract.py` | To build |
+| `src/backend/knowledge.py` | To build — knowledge bases already deployed |
 | `src/backend/agent.py` | To build |
 | `src/backend/api.py` | To build |
 | `src/frontend` | To build |

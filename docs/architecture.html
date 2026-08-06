@@ -1,0 +1,1203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — Autonomous SAP Accounts Payable</title>
+<style>
+  :root {
+    color-scheme: light dark;
+
+    --ink:        #FAFAFB;
+    --surface:    #FFFFFF;
+    --raised:     #F3F4F7;
+    --line:       #DFE2EA;
+    --line-soft:  #EBEDF2;
+    --fg:         #14161C;
+    --fg-muted:   #5C6472;
+    --fg-faint:   #8A92A1;
+
+    --crimson:    #B71818;
+    --indigo:     #263BF1;
+    --teal:       #0F7F6C;
+    --amber:      #9A6B12;
+
+    --crimson-bg: #FBEAEA;
+    --indigo-bg:  #E9EBFE;
+    --teal-bg:    #E2F3EF;
+    --amber-bg:   #F7EFDD;
+
+    --sans: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system,
+            "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", "JetBrains Mono",
+            Menlo, Consolas, monospace;
+
+    --measure: 68ch;
+    --gutter: clamp(1.25rem, 4vw, 3rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink:        #0B0D11;
+      --surface:    #14171D;
+      --raised:     #1A1E26;
+      --line:       #272C36;
+      --line-soft:  #1E222B;
+      --fg:         #E7EAF0;
+      --fg-muted:   #99A1B0;
+      --fg-faint:   #6D7686;
+
+      --crimson:    #E4443F;
+      --indigo:     #7A88FF;
+      --teal:       #33BFA5;
+      --amber:      #D9A441;
+
+      --crimson-bg: #2A1517;
+      --indigo-bg:  #171B33;
+      --teal-bg:    #10261F;
+      --amber-bg:   #26200F;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --ink:#FAFAFB; --surface:#FFFFFF; --raised:#F3F4F7; --line:#DFE2EA;
+    --line-soft:#EBEDF2; --fg:#14161C; --fg-muted:#5C6472; --fg-faint:#8A92A1;
+    --crimson:#B71818; --indigo:#263BF1; --teal:#0F7F6C; --amber:#9A6B12;
+    --crimson-bg:#FBEAEA; --indigo-bg:#E9EBFE; --teal-bg:#E2F3EF; --amber-bg:#F7EFDD;
+  }
+  :root[data-theme="dark"] {
+    --ink:#0B0D11; --surface:#14171D; --raised:#1A1E26; --line:#272C36;
+    --line-soft:#1E222B; --fg:#E7EAF0; --fg-muted:#99A1B0; --fg-faint:#6D7686;
+    --crimson:#E4443F; --indigo:#7A88FF; --teal:#33BFA5; --amber:#D9A441;
+    --crimson-bg:#2A1517; --indigo-bg:#171B33; --teal-bg:#10261F; --amber-bg:#26200F;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation: none !important; transition: none !important; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--indigo); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--indigo);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  code, .mono { font-family: var(--mono); font-size: 0.86em; }
+  code {
+    background: var(--raised);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 0.08em 0.34em;
+  }
+
+  /* ---------- shell ---------- */
+
+  .shell {
+    display: grid;
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: var(--gutter);
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+  }
+
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 3.25rem 0 2rem;
+    border-right: 1px solid var(--line-soft);
+  }
+
+  .rail-mark {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--crimson);
+    margin: 0 0 0.35rem;
+  }
+  .rail-title {
+    font-size: 0.92rem;
+    font-weight: 620;
+    line-height: 1.35;
+    margin: 0 0 1.75rem;
+    padding-right: 1rem;
+  }
+
+  .rail nav ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+  .rail nav a {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.28rem 0;
+    font-size: 0.83rem;
+    color: var(--fg-muted);
+    text-decoration: none;
+  }
+  .rail nav a:hover { color: var(--fg); }
+  .rail nav .num {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--fg-faint);
+    min-width: 1.15rem;
+    padding-top: 0.12em;
+  }
+
+  main { padding: 3.25rem 0 6rem; min-width: 0; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead { padding-bottom: 2.25rem; border-bottom: 2px solid var(--fg); }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+    margin: 0 0 1rem;
+  }
+  h1 {
+    font-size: clamp(2rem, 4.6vw, 3.1rem);
+    line-height: 1.06;
+    letter-spacing: -0.022em;
+    font-weight: 660;
+    margin: 0 0 1rem;
+    text-wrap: balance;
+    max-width: 20ch;
+  }
+  .standfirst {
+    font-size: 1.09rem;
+    color: var(--fg-muted);
+    margin: 0 0 1.75rem;
+    max-width: 62ch;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2.25rem;
+    font-family: var(--mono);
+    font-size: 0.76rem;
+    color: var(--fg-faint);
+  }
+  .facts b { color: var(--fg-muted); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section { padding-top: 3.5rem; }
+  section + section { border-top: 1px solid var(--line-soft); margin-top: 3.5rem; }
+
+  h2 {
+    font-size: 1.55rem;
+    letter-spacing: -0.014em;
+    font-weight: 640;
+    margin: 0 0 0.5rem;
+    text-wrap: balance;
+  }
+  h2 .h2num {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--crimson);
+    display: block;
+    letter-spacing: 0.14em;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+  h3 {
+    font-size: 0.78rem;
+    font-family: var(--mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    font-weight: 500;
+    margin: 2.5rem 0 0.9rem;
+  }
+  p, ul, ol { max-width: var(--measure); }
+  p { margin: 0 0 1.05rem; }
+  ul, ol { margin: 0 0 1.05rem; padding-left: 1.15rem; }
+  li { margin-bottom: 0.4rem; }
+
+  .lede { font-size: 1.05rem; color: var(--fg-muted); }
+
+  .thesis {
+    font-size: clamp(1.3rem, 2.6vw, 1.75rem);
+    line-height: 1.28;
+    letter-spacing: -0.015em;
+    font-weight: 620;
+    margin: 0 0 1.4rem;
+    max-width: 24ch;
+  }
+  .thesis .sep { color: var(--crimson); font-weight: 400; }
+
+  /* ---------- figures ---------- */
+
+  figure {
+    margin: 2rem 0 2.25rem;
+    padding: 1.35rem 1.35rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  figure svg { display: block; width: 100%; min-width: 620px; height: auto; color: var(--fg); }
+  figcaption {
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--line-soft);
+    font-size: 0.85rem;
+    color: var(--fg-muted);
+    max-width: var(--measure);
+  }
+  figcaption b { color: var(--fg); font-weight: 600; }
+
+  /* ---------- tables ---------- */
+
+  .scroller { overflow-x: auto; margin: 1.5rem 0 2rem; border: 1px solid var(--line); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; background: var(--surface); }
+  th, td { text-align: left; padding: 0.62rem 0.9rem; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+    font-weight: 500;
+    background: var(--raised);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td .mono { color: var(--fg-muted); }
+
+  /* ---------- chips & pills ---------- */
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.14em 0.5em;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .pill-model { background: var(--indigo-bg); color: var(--indigo); }
+  .pill-code  { background: var(--raised);    color: var(--fg-muted); }
+  .pill-write { background: var(--crimson-bg); color: var(--crimson); }
+  .pill-pass  { background: var(--teal-bg);   color: var(--teal); }
+  .pill-warn  { background: var(--amber-bg);  color: var(--amber); }
+
+  .rules {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+    gap: 0.5rem;
+    margin: 1.4rem 0 1rem;
+  }
+  .rule {
+    display: flex;
+    gap: 0.6rem;
+    align-items: baseline;
+    padding: 0.55rem 0.7rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--fg-faint);
+    border-radius: 4px;
+    font-size: 0.83rem;
+  }
+  .rule.offline { border-left-color: var(--teal); }
+  .rule .rid { font-family: var(--mono); font-size: 0.74rem; color: var(--fg-faint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 1.25rem; font-size: 0.8rem; color: var(--fg-muted); margin-bottom: 0.4rem; }
+  .legend span { display: flex; align-items: center; gap: 0.45rem; }
+  .swatch { width: 3px; height: 0.95rem; border-radius: 2px; background: var(--fg-faint); }
+  .swatch.offline { background: var(--teal); }
+
+  /* ---------- status list ---------- */
+
+  .status { list-style: none; padding: 0; margin: 1.4rem 0; max-width: var(--measure); }
+  .status li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-size: 0.9rem;
+  }
+  .status li:last-child { border-bottom: none; }
+  .status .path { font-family: var(--mono); font-size: 0.8rem; flex: 1; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; transform: translateY(-1px); }
+  .dot.done { background: var(--teal); }
+  .dot.todo { background: transparent; border: 1px solid var(--fg-faint); }
+
+  .checks { list-style: none; padding: 0; }
+  .checks li { padding-left: 1.5rem; position: relative; }
+  .checks li::before {
+    content: "";
+    position: absolute;
+    left: 0.15rem; top: 0.72em;
+    width: 0.5rem; height: 0.5rem;
+    border-radius: 50%;
+    background: var(--teal);
+  }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    color: var(--fg-faint);
+  }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail {
+      position: static; height: auto; border-right: none;
+      border-bottom: 1px solid var(--line-soft); padding-bottom: 1.5rem;
+    }
+    .rail nav ol { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); display: grid; }
+    main { padding-top: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <aside class="rail">
+    <p class="rail-mark">Topic 3 &middot; AWS</p>
+    <p class="rail-title">Autonomous SAP Accounts&nbsp;Payable</p>
+    <nav aria-label="Sections">
+      <ol>
+        <li><a href="#principle"><span class="num">01</span> Guiding principle</a></li>
+        <li><a href="#agents"><span class="num">02</span> Agents</a></li>
+        <li><a href="#components"><span class="num">03</span> Component map</a></li>
+        <li><a href="#call"><span class="num">04</span> How a call is made</a></li>
+        <li><a href="#reads"><span class="num">05</span> Reads and rules</a></li>
+        <li><a href="#knowledge"><span class="num">06</span> Knowledge grounding</a></li>
+        <li><a href="#budget"><span class="num">07</span> Call budget</a></li>
+        <li><a href="#gate"><span class="num">08</span> Approval gate</a></li>
+        <li><a href="#failure"><span class="num">09</span> Failure handling</a></li>
+        <li><a href="#security"><span class="num">10</span> Security</a></li>
+        <li><a href="#verified"><span class="num">11</span> Verified live</a></li>
+        <li><a href="#status"><span class="num">12</span> Build status</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+
+    <header class="masthead">
+      <p class="eyebrow">System architecture</p>
+      <h1>From invoice chaos to one&#8209;click posting</h1>
+      <p class="standfirst">
+        A business user uploads a batch of supplier invoices, chats, approves once,
+        and every valid invoice is parked in SAP S/4HANA. Failures are skipped and
+        explained in plain business language.
+      </p>
+      <p class="facts">
+        <span><b>Event</b> DMI Hackathon 2026, Seeburg</span>
+        <span><b>Backend</b> Python &middot; FastAPI</span>
+        <span><b>SAP access</b> OData v2 via MCP</span>
+        <span><b>Model</b> Claude Sonnet 4.5 on Bedrock</span>
+      </p>
+    </header>
+
+    <!-- 01 -->
+    <section id="principle">
+      <h2><span class="h2num">01</span>Guiding principle</h2>
+
+      <p class="thesis">The model reads. <span class="sep">/</span> Code judges. <span class="sep">/</span> A human approves.</p>
+
+      <p class="lede">
+        Language models are excellent at pulling fields off a scanned invoice and at
+        explaining a situation in business English. They are unreliable at arithmetic,
+        at applying a tolerance table consistently, and at never inventing a purchase
+        order that does not exist.
+      </p>
+      <p>
+        So extraction and explanation are the model's job, and every accept-or-reject
+        decision is a deterministic pure function that can be unit tested, replayed and
+        audited. That split is the core design decision. It is what makes the same batch
+        produce the same verdict twice, and what lets someone ask <em>"what if the
+        threshold were 2% instead of 5%?"</em> and get an answer by editing one table entry.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 920 250" role="img"
+             aria-label="Pipeline of five stages: extract and explain are model stages, validate and park are deterministic code, approve is a human gate that sits between the read phase and the only write.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+            <marker id="arRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#B71818"/>
+            </marker>
+          </defs>
+
+          <!-- legend -->
+          <g font-family="ui-monospace, monospace" font-size="11">
+            <rect x="25" y="16" width="9" height="9" rx="2" fill="#263BF1" opacity="0.85"/>
+            <text x="41" y="25" fill="currentColor" opacity="0.75">model</text>
+            <rect x="105" y="16" width="9" height="9" rx="2" fill="currentColor" opacity="0.35"/>
+            <text x="121" y="25" fill="currentColor" opacity="0.75">deterministic</text>
+            <rect x="222" y="16" width="9" height="9" rx="2" fill="#B71818"/>
+            <text x="238" y="25" fill="currentColor" opacity="0.75">human gate / write</text>
+          </g>
+
+          <!-- boxes: 5 stages, w=150 h=76, y=62, centers 100 280 460 640 820 -->
+          <g>
+            <rect x="25"  y="62" width="150" height="76" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+            <rect x="205" y="62" width="150" height="76" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+            <rect x="385" y="62" width="150" height="76" rx="5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
+            <rect x="565" y="62" width="150" height="76" rx="5" fill="none" stroke="#B71818" stroke-width="2"/>
+            <rect x="745" y="62" width="150" height="76" rx="5" fill="none" stroke="#B71818" stroke-width="2"/>
+          </g>
+
+          <g text-anchor="middle" fill="currentColor">
+            <text x="100" y="92"  font-size="15" font-weight="600">Extract</text>
+            <text x="280" y="92"  font-size="15" font-weight="600">Map</text>
+            <text x="460" y="92"  font-size="15" font-weight="600">Validate</text>
+            <text x="640" y="92"  font-size="15" font-weight="600">Approve</text>
+            <text x="820" y="92"  font-size="15" font-weight="600">Park</text>
+
+            <g font-family="ui-monospace, monospace" font-size="11" opacity="0.72">
+              <text x="100" y="112">extract.py</text>
+              <text x="280" y="112">extract.py</text>
+              <text x="460" y="112">rules.py</text>
+              <text x="640" y="112">POST /approve</text>
+              <text x="820" y="112">sap.py</text>
+            </g>
+            <g font-size="11" opacity="0.6">
+              <text x="100" y="129">PDF to fields</text>
+              <text x="280" y="129">fields to SAP</text>
+              <text x="460" y="129">17 rules</text>
+              <text x="640" y="129">one gate, whole batch</text>
+              <text x="820" y="129">status A, one POST each</text>
+            </g>
+          </g>
+
+          <!-- arrows between -->
+          <g stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)">
+            <line x1="175" y1="100" x2="203" y2="100"/>
+            <line x1="355" y1="100" x2="383" y2="100"/>
+            <line x1="535" y1="100" x2="563" y2="100"/>
+          </g>
+          <line x1="715" y1="100" x2="743" y2="100" stroke="#B71818" stroke-width="2" marker-end="url(#arRed)"/>
+
+          <!-- phase bracket: read-only -->
+          <g stroke="currentColor" opacity="0.45" stroke-width="1">
+            <line x1="25" y1="170" x2="535" y2="170"/>
+            <line x1="25" y1="170" x2="25" y2="162"/>
+            <line x1="535" y1="170" x2="535" y2="162"/>
+          </g>
+          <text x="280" y="188" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.65">
+            read phase &mdash; nothing is written to SAP
+          </text>
+
+          <g stroke="#B71818" stroke-width="1">
+            <line x1="565" y1="170" x2="895" y2="170"/>
+            <line x1="565" y1="170" x2="565" y2="162"/>
+            <line x1="895" y1="170" x2="895" y2="162"/>
+          </g>
+          <text x="730" y="188" text-anchor="middle" font-size="12" fill="#B71818">
+            the only write &mdash; reversible by construction
+          </text>
+
+          <text x="460" y="225" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.55">
+            A failure at any stage skips that one invoice. The batch continues.
+          </text>
+        </svg>
+        <figcaption>
+          <b>One invoice's journey, typed by who decides.</b> The two model stages touch
+          no SAP data and make no verdict; the validator makes every verdict and touches
+          no network. Everything left of the approval gate is read-only, which is why the
+          batch can be re-run as often as needed before anyone commits.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- 02 -->
+    <section id="agents">
+      <h2><span class="h2num">02</span>Agents and responsibilities</h2>
+      <p>
+        The multi-agent split is real but deliberately asymmetric. Making the validator an
+        agent would be slower, non-reproducible and impossible to unit test &mdash; worse on
+        every axis that matters.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>Component</th><th>Kind</th><th>Model</th><th>Responsibility</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><b>Orchestrator</b></td>
+              <td><span class="pill pill-model">LLM agent</span></td>
+              <td class="mono">Sonnet 4.5</td>
+              <td>The chat surface. Chooses tools, sequences the workflow, answers follow-up
+                  questions, asks for approval. Never decides pass or fail itself.</td>
+            </tr>
+            <tr>
+              <td><b>Extractor</b></td>
+              <td><span class="pill pill-model">LLM agent</span></td>
+              <td class="mono">Sonnet 4.5 vision</td>
+              <td>One invoice document to one structured <code>Invoice</code>. Normalises German
+                  decimal commas, dates and units. Returns per-field confidence.</td>
+            </tr>
+            <tr>
+              <td><b>Validator</b></td>
+              <td><span class="pill pill-code">deterministic</span></td>
+              <td class="mono">&mdash;</td>
+              <td>17 rules against a <code>SapContext</code>. Returns <code>Finding</code> objects
+                  carrying the SOP clause and an approval level.</td>
+            </tr>
+            <tr>
+              <td><b>Retriever</b></td>
+              <td><span class="pill pill-model">retrieval</span></td>
+              <td class="mono">embeddings</td>
+              <td>Pulls the resolution procedure for a SOP clause the validator has already
+                  named, and finds OData paths for questions outside the fixed rule set.
+                  Never produces a verdict.</td>
+            </tr>
+            <tr>
+              <td><b>SAP gateway</b></td>
+              <td><span class="pill pill-code">deterministic</span></td>
+              <td class="mono">&mdash;</td>
+              <td>Every SAP read and the single write, routed through MCP.</td>
+            </tr>
+            <tr>
+              <td><b>Poster</b></td>
+              <td><span class="pill pill-write">deterministic</span></td>
+              <td class="mono">&mdash;</td>
+              <td>Parks each passing invoice after approval and records the document numbers.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 03 -->
+    <section id="components">
+      <h2><span class="h2num">03</span>Component map</h2>
+
+      <figure>
+        <svg viewBox="0 0 1040 604" role="img"
+             aria-label="Layered component map. The browser talks to the orchestrator, which calls the extractor, the rules engine, the knowledge retriever and the SAP gateway. Two S3 buckets feed two Bedrock knowledge bases holding the SOPs and the OData specifications. Only the MCP server on AgentCore holds SAP credentials, retrieved from Secrets Manager; SAP itself sits in its own VPC behind an application load balancer.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar2Red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#B71818"/>
+            </marker>
+            <marker id="ar2Ind" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#263BF1"/>
+            </marker>
+          </defs>
+
+          <!-- row 1: frontend -->
+          <rect x="390" y="18" width="260" height="50" rx="5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.55"/>
+          <text x="520" y="40" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Frontend</text>
+          <text x="520" y="57" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.6">chat &#183; batch grid &#183; rule detail</text>
+
+          <!-- row 2: orchestrator -->
+          <rect x="370" y="100" width="300" height="56" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="520" y="124" text-anchor="middle" font-size="14" font-weight="600" fill="currentColor">Orchestrator agent</text>
+          <text x="520" y="142" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.6">agent.py &#183; FastAPI</text>
+
+          <!-- row 3: four modules -->
+          <rect x="61"  y="196" width="210" height="62" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+          <text x="166" y="220" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Extractor</text>
+          <text x="166" y="239" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">extract.py</text>
+
+          <rect x="297" y="196" width="210" height="62" rx="5" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.5"/>
+          <text x="402" y="220" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Validator</text>
+          <text x="402" y="239" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">rules.py</text>
+
+          <rect x="533" y="196" width="210" height="62" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+          <text x="638" y="220" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Retriever</text>
+          <text x="638" y="239" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">knowledge.py</text>
+
+          <rect x="769" y="196" width="210" height="62" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="874" y="220" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">SAP gateway</text>
+          <text x="874" y="239" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">sap.py</text>
+
+          <text x="402" y="282" text-anchor="middle" font-size="11" fill="#0F7F6C" font-family="ui-monospace, monospace">no network &#183; no clock &#183; no globals</text>
+
+          <!-- frontend to orchestrator -->
+          <line x1="520" y1="68" x2="520" y2="98" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+
+          <!-- orchestrator to modules -->
+          <g stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)" fill="none">
+            <path d="M420,156 L420,176 L166,176 L166,194"/>
+            <path d="M470,156 L470,176 L402,176 L402,194"/>
+            <path d="M570,156 L570,176 L638,176 L638,194"/>
+            <path d="M620,156 L620,176 L874,176 L874,194"/>
+          </g>
+
+          <!-- trust boundary -->
+          <line x1="20" y1="302" x2="1020" y2="302" stroke="#B71818" stroke-width="1.5" stroke-dasharray="7 5"/>
+          <text x="1020" y="295" text-anchor="end" font-size="11.5" fill="#B71818" font-family="ui-monospace, monospace">SAP credentials never cross this line</text>
+
+          <!-- row 4: AWS services -->
+          <rect x="61"  y="322" width="210" height="58" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+          <text x="166" y="346" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">Amazon Bedrock</text>
+          <text x="166" y="364" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.62">Claude Sonnet 4.5</text>
+
+          <rect x="385" y="322" width="170" height="58" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+          <text x="470" y="345" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Knowledge base</text>
+          <text x="470" y="363" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.62">SOPs</text>
+
+          <rect x="575" y="322" width="170" height="58" rx="5" fill="none" stroke="#263BF1" stroke-width="1.5"/>
+          <text x="660" y="345" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Knowledge base</text>
+          <text x="660" y="363" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.62">OData specs</text>
+
+          <rect x="800" y="322" width="200" height="58" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="900" y="345" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">MCP server</text>
+          <text x="900" y="363" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.62">Bedrock AgentCore Runtime</text>
+
+          <!-- row 5: S3 sources and Secrets Manager -->
+          <rect x="385" y="414" width="170" height="48" rx="5" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.6"/>
+          <text x="470" y="435" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">Amazon S3</text>
+          <text x="470" y="452" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.62">SOP documents</text>
+
+          <rect x="575" y="414" width="170" height="48" rx="5" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.6"/>
+          <text x="660" y="435" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">Amazon S3</text>
+          <text x="660" y="452" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.62">SAP API library</text>
+
+          <rect x="800" y="414" width="200" height="48" rx="5" fill="none" stroke="#B71818" stroke-width="1.5"/>
+          <text x="900" y="435" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">Secrets Manager</text>
+          <text x="900" y="452" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.62">SAP user + password</text>
+
+          <!-- extractor to bedrock -->
+          <line x1="166" y1="258" x2="166" y2="320" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+          <!-- orchestrator to bedrock, around the left -->
+          <path d="M370,128 L30,128 L30,351 L59,351" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#ar2)" opacity="0.6"/>
+
+          <!-- retriever to knowledge bases -->
+          <path d="M580,258 L580,290 L470,290 L470,320" fill="none" stroke="#263BF1" stroke-width="1.5" marker-end="url(#ar2Ind)"/>
+          <line x1="680" y1="258" x2="680" y2="320" stroke="#263BF1" stroke-width="1.5" marker-end="url(#ar2Ind)"/>
+          <text x="700" y="288" font-size="10.5" font-family="ui-monospace, monospace" fill="#263BF1">retrieve</text>
+
+          <!-- S3 to knowledge bases -->
+          <line x1="470" y1="412" x2="470" y2="384" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)" opacity="0.65"/>
+          <line x1="660" y1="412" x2="660" y2="384" stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)" opacity="0.65"/>
+
+          <!-- sap.py to MCP -->
+          <line x1="874" y1="258" x2="874" y2="320" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+          <text x="886" y="290" font-size="10.5" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.7">tools/call</text>
+
+          <!-- MCP to Secrets Manager -->
+          <line x1="940" y1="380" x2="940" y2="412" stroke="#B71818" stroke-width="1.5" marker-end="url(#ar2Red)"/>
+
+          <!-- SAP VPC -->
+          <rect x="55" y="486" width="470" height="98" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4" opacity="0.55"/>
+          <text x="70" y="504" font-size="11" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">SAP VPC</text>
+
+          <rect x="90"  y="514" width="160" height="52" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="170" y="537" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">Load balancer</text>
+          <text x="170" y="554" text-anchor="middle" font-size="10.5" fill="currentColor" opacity="0.62">application</text>
+
+          <rect x="290" y="514" width="200" height="52" rx="5" fill="none" stroke="currentColor" stroke-width="2"/>
+          <text x="390" y="537" text-anchor="middle" font-size="13.5" font-weight="600" fill="currentColor">SAP S/4HANA</text>
+          <text x="390" y="554" text-anchor="middle" font-size="10.5" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.62">OData v2</text>
+
+          <!-- MCP to load balancer -->
+          <path d="M830,380 L830,478 L170,478 L170,512" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+          <text x="520" y="472" text-anchor="middle" font-size="10.5" font-family="ui-monospace, monospace" fill="currentColor" opacity="0.7">Basic + CSRF, retried on transient failure</text>
+
+          <line x1="250" y1="540" x2="288" y2="540" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+        </svg>
+        <figcaption>
+          <b>The backend holds no SAP password.</b> Credentials live in Secrets Manager and
+          are read only by the MCP server, on the far side of the dashed boundary. Note the
+          validator: it has arrows in and none out, because it performs no I/O of any kind.
+          The two knowledge bases are fed from S3 and reached only by the retriever, which
+          returns guidance and never a verdict. SAP sits in its own VPC behind a load
+          balancer, which is why the call leaves AWS and comes back in.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- 04 -->
+    <section id="call">
+      <h2><span class="h2num">04</span>How a SAP call is actually made</h2>
+      <p>
+        Every SAP call takes the same five hops. There is no direct OData path from the
+        backend; the MCP server is the only component holding SAP credentials.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 960 216" role="img"
+             aria-label="Five hops: sap.py gets a bearer token from Cognito, sends a JSON-RPC tools call to the MCP server on AgentCore, which fetches SAP credentials from Secrets Manager and issues the OData request to SAP. The response returns as server-sent events.">
+          <defs>
+            <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <g font-family="ui-monospace, monospace" font-size="11" fill="#B71818" text-anchor="middle">
+            <text x="100" y="30">01</text>
+            <text x="290" y="30">02</text>
+            <text x="480" y="30">03</text>
+            <text x="670" y="30">04</text>
+            <text x="860" y="30">05</text>
+          </g>
+
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="25"  y="44" width="150" height="58" rx="5"/>
+            <rect x="215" y="44" width="150" height="58" rx="5"/>
+            <rect x="405" y="44" width="150" height="58" rx="5"/>
+            <rect x="595" y="44" width="150" height="58" rx="5"/>
+            <rect x="785" y="44" width="150" height="58" rx="5" stroke-width="2"/>
+          </g>
+
+          <g text-anchor="middle" fill="currentColor">
+            <text x="100" y="70" font-size="13" font-weight="600">sap.py</text>
+            <text x="290" y="70" font-size="13" font-weight="600">Cognito</text>
+            <text x="480" y="70" font-size="13" font-weight="600">AgentCore</text>
+            <text x="670" y="70" font-size="13" font-weight="600">Secrets Mgr</text>
+            <text x="860" y="70" font-size="13" font-weight="600">SAP OData</text>
+            <g font-size="10.5" opacity="0.62">
+              <text x="100" y="88">the backend</text>
+              <text x="290" y="88">machine-to-machine</text>
+              <text x="480" y="88">MCP server</text>
+              <text x="670" y="88">SAP user + password</text>
+              <text x="860" y="88">S/4HANA</text>
+            </g>
+          </g>
+
+          <g stroke="currentColor" stroke-width="1.5" marker-end="url(#ar3)">
+            <line x1="175" y1="73" x2="213" y2="73"/>
+            <line x1="365" y1="73" x2="403" y2="73"/>
+            <line x1="555" y1="73" x2="593" y2="73"/>
+            <line x1="745" y1="73" x2="783" y2="73"/>
+          </g>
+
+          <g font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.72" text-anchor="middle">
+            <text x="194" y="122">client_</text>
+            <text x="194" y="134">credentials</text>
+            <text x="384" y="122">tools/call</text>
+            <text x="384" y="134">+ session id</text>
+            <text x="574" y="122">GetSecret</text>
+            <text x="574" y="134">Value</text>
+            <text x="764" y="122">GET / POST</text>
+            <text x="764" y="134">+ CSRF</text>
+          </g>
+
+          <!-- return path -->
+          <path d="M860,102 L860,178 L100,178 L100,104" fill="none" stroke="currentColor"
+                stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar3)" opacity="0.7"/>
+          <text x="480" y="171" text-anchor="middle" font-size="11" font-family="ui-monospace, monospace"
+                fill="currentColor" opacity="0.75">
+            response returns as server-sent events &mdash; payload is the data: line
+          </text>
+          <text x="480" y="204" text-anchor="middle" font-size="11.5" fill="currentColor" opacity="0.55">
+            A 204 No Content answers with an empty body, which the tool reports as prose rather than JSON.
+          </text>
+        </svg>
+        <figcaption>
+          <b>Five hops, one credential holder.</b> The bearer token is cached for the
+          process lifetime and the MCP <code>initialize</code> handshake runs once per client,
+          so the per-call cost is one round trip, not three.
+        </figcaption>
+      </figure>
+
+      <h3>Hop detail</h3>
+      <ol>
+        <li><b>Token.</b> <code>sap.py</code> posts client credentials to the Cognito token
+            endpoint and caches the bearer.</li>
+        <li><b>Session.</b> A session id of at least 33 characters goes in the
+            <code>X-Amzn-Bedrock-AgentCore-Runtime-Session-Id</code> header.
+            <code>initialize</code> is sent once, then reused.</li>
+        <li><b>JSON-RPC.</b> A <code>tools/call</code> request naming
+            <code>invoke_sap_odata_service</code>, with the full OData URL, HTTP method and
+            optional body as arguments.</li>
+        <li><b>MCP server.</b> Fetches SAP credentials from Secrets Manager, obtains a CSRF
+            token, and issues the OData request.</li>
+        <li><b>Response.</b> streamable-HTTP replies as server-sent events; the payload is
+            the <code>data:</code> line.</li>
+      </ol>
+    </section>
+
+    <!-- 05 -->
+    <section id="reads">
+      <h2><span class="h2num">05</span>Reads and the rules they serve</h2>
+
+      <div class="scroller">
+        <table>
+          <thead>
+            <tr><th>#</th><th>Entity</th><th>Purpose</th><th>Rules</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num">1</td><td class="mono">A_PurchaseOrder</td>
+                <td>Header: vendor, company code, currency, deletion flag</td>
+                <td class="num">R01 R02 R04 R05 R06</td></tr>
+            <tr><td class="num">2</td><td class="mono">A_PurchaseOrderItem</td>
+                <td>Material, quantity, price, GR-based flag</td>
+                <td class="num">R03 R07 R09</td></tr>
+            <tr><td class="num">3</td><td class="mono">A_SuplrInvcItemPurOrdRef</td>
+                <td>What already references this line</td>
+                <td class="num">R08</td></tr>
+            <tr><td class="num">4</td><td class="mono">A_SupplierInvoice</td>
+                <td>Status join &mdash; excludes parked drafts</td>
+                <td class="num">R08</td></tr>
+            <tr><td class="num">5</td><td class="mono">A_MaterialDocumentItem</td>
+                <td>Goods receipts, movement 101 and 102</td>
+                <td class="num">R12 R13</td></tr>
+            <tr><td class="num">6</td><td class="mono">A_SupplierInvoice</td>
+                <td>References already used for this vendor</td>
+                <td class="num">R16</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The 17 rules</h3>
+      <div class="legend">
+        <span><i class="swatch"></i> needs a SAP read</span>
+        <span><i class="swatch offline"></i> runs with SAP unreachable</span>
+      </div>
+      <div class="rules">
+        <div class="rule"><span class="rid">R01</span> Purchase Order exists</div>
+        <div class="rule"><span class="rid">R02</span> Purchase Order is open</div>
+        <div class="rule"><span class="rid">R03</span> PO line item exists</div>
+        <div class="rule"><span class="rid">R04</span> Supplier matches PO vendor</div>
+        <div class="rule"><span class="rid">R05</span> Company code matches</div>
+        <div class="rule"><span class="rid">R06</span> Currency matches</div>
+        <div class="rule"><span class="rid">R07</span> Material matches</div>
+        <div class="rule"><span class="rid">R08</span> Quantity within PO tolerance</div>
+        <div class="rule"><span class="rid">R09</span> Unit price within tolerance</div>
+        <div class="rule offline"><span class="rid">R10</span> Line amount reconciles</div>
+        <div class="rule offline"><span class="rid">R11</span> Gross reconciles to lines</div>
+        <div class="rule"><span class="rid">R12</span> Goods Receipt exists</div>
+        <div class="rule"><span class="rid">R13</span> GR quantity sufficient</div>
+        <div class="rule offline"><span class="rid">R14</span> Tax code valid</div>
+        <div class="rule offline"><span class="rid">R15</span> Date in an open period</div>
+        <div class="rule offline"><span class="rid">R16</span> Not a duplicate</div>
+        <div class="rule offline"><span class="rid">R17</span> Mandatory fields complete</div>
+      </div>
+      <p>
+        The five teal rules need no SAP read. They still run when SAP is unreachable, and
+        they still run for an invoice whose purchase order does not exist &mdash; which is why
+        a missing PO reports one failure and ten <code>NOT_APPLICABLE</code>, not eleven failures.
+      </p>
+
+      <h3>Determinism and the tolerance table</h3>
+      <p>
+        Routing thresholds come from <span class="mono">AP-SOP-001</span> section 8.1 and live
+        in a dictionary. A price variance of 0.35% auto-approves; 3.17% routes to an AP
+        Manager. Both come from the same rule, and the difference is data, not a branch.
+      </p>
+      <p>
+        Each <code>Finding</code> carries the invoice value, the SAP value, the delta, the SOP
+        clause and a business-English message &mdash; so the batch summary explains itself
+        without a second model call.
+      </p>
+    </section>
+
+    <!-- 06 -->
+    <section id="knowledge">
+      <h2><span class="h2num">06</span>Knowledge grounding</h2>
+      <p>
+        Two Bedrock Knowledge Bases sit behind the orchestrator, each fed from an S3
+        bucket. Both are already deployed.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Knowledge base</th><th>Id</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td><b>SOPs</b></td><td class="mono">HRQMR9REUCexcd</td>
+                <td><span class="mono">AP-SOP-001</span> three-way match exception handling,
+                    duplicate invoice SOP</td></tr>
+            <tr><td><b>SAP API library</b></td><td class="mono">M6GBMOSKQX</td>
+                <td>OpenAPI specifications for the OData services</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The boundary that matters</h3>
+      <p>
+        <b>Retrieval never produces a verdict.</b> A vector search that decides whether an
+        invoice is payable is a vector search that will eventually decide wrongly, and do
+        it quietly. The division of labour is fixed.
+      </p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Question</th><th>Answered by</th></tr></thead>
+          <tbody>
+            <tr><td>Does this invoice pass?</td>
+                <td><span class="pill pill-code">deterministic</span> <code>rules.py</code></td></tr>
+            <tr><td>Why, in business terms?</td>
+                <td><span class="pill pill-code">deterministic</span> <code>Finding.message</code></td></tr>
+            <tr><td>Which SOP clause governs it?</td>
+                <td><span class="pill pill-code">deterministic</span> <code>Finding.sop_ref</code></td></tr>
+            <tr><td>What should the clerk do about it?</td>
+                <td><span class="pill pill-model">retrieval</span> SOP knowledge base</td></tr>
+            <tr><td>Which OData path answers an ad-hoc question?</td>
+                <td><span class="pill pill-model">retrieval</span> API knowledge base</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        The SOP retrieval is keyed by the clause the validator has <em>already</em> named. It
+        is a lookup, not a search for the answer, so retrieval cannot drift the outcome
+        &mdash; at worst it returns unhelpful guidance beside a verdict that is still correct.
+      </p>
+
+      <h3>What this adds</h3>
+      <p><code>rules.py</code> produces the finding:</p>
+      <blockquote style="margin:0 0 1.05rem; padding:0.9rem 1.1rem; border-left:3px solid var(--amber);
+                         background:var(--surface); border-radius:0 4px 4px 0; max-width:var(--measure);
+                         font-size:0.92rem;">
+        Unit price EUR 11.71 is 3.17% above the agreed Purchase Order price of EUR 11.35
+        &mdash; a difference of EUR 3.60 on this line.
+        <span class="mono" style="color:var(--fg-muted);">AP-SOP-001 6.1 / 8.1</span>
+      </blockquote>
+      <p>
+        The SOP knowledge base then supplies what happens next, grounded in the actual
+        document rather than invented: check whether a PO amendment covers the difference,
+        contact Procurement to verify the increase on days 1&ndash;2, escalate to the AP
+        Manager if unresolved after five business days.
+      </p>
+      <p>
+        Verdict from code, remediation from the SOP. That is the "auto-suggest a correction"
+        stretch goal without a model guessing at company policy.
+      </p>
+      <p>
+        The API knowledge base covers the other direction. The six fixed reads serve the 17
+        rules; when a user asks something outside them &mdash; <em>"has this vendor been
+        short-delivered before?"</em> &mdash; the orchestrator needs to discover an OData path
+        it was never hardcoded with.
+      </p>
+
+      <h3>knowledge.py</h3>
+      <ul>
+        <li><code>resolution_steps(sop_ref, exception_type)</code> &rarr; ordered steps, owner
+            and timeframe, from the SOP knowledge base.</li>
+        <li><code>find_odata_path(question)</code> &rarr; a concrete OData path, from the API
+            knowledge base.</li>
+      </ul>
+      <p>
+        Both call <code>bedrock-agent-runtime.retrieve</code>. Retrieval runs only for
+        invoices that failed or warned, so a clean batch costs zero retrieval calls.
+      </p>
+    </section>
+
+    <!-- 07 -->
+    <section id="budget">
+      <h2><span class="h2num">07</span>Call budget</h2>
+      <p>
+        A cold context build costs four to six calls. Two caches cut a six-invoice batch
+        from roughly 32 calls to about 14.
+      </p>
+      <ul>
+        <li><b>Purchase order cache</b>, keyed by <code>(po, item)</code>. Two invoices against
+            the same PO read it once.</li>
+        <li><b>Vendor reference cache</b>, keyed by <code>InvoicingParty</code>. The demo batch
+            has two vendors, so the duplicate check costs 2 calls rather than 6.</li>
+      </ul>
+      <p>
+        The write phase is exactly one <code>POST</code> per passing invoice. No batching,
+        because a partial failure must be attributable to a single invoice.
+      </p>
+    </section>
+
+    <!-- 07 -->
+    <section id="gate">
+      <h2><span class="h2num">08</span>The approval gate</h2>
+      <p>
+        The gate is enforced by the server, not by a system prompt. A prompt instruction is
+        a suggestion; this is a state machine.
+      </p>
+
+      <figure>
+        <svg viewBox="0 0 960 236" role="img"
+             aria-label="State machine: created, extracted, validated, approved, parked. A transition from extracted directly to approved is refused because no approval token exists without validation.">
+          <defs>
+            <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+          </defs>
+
+          <g fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="18"  y="88" width="152" height="50" rx="25"/>
+            <rect x="208" y="88" width="152" height="50" rx="25"/>
+            <rect x="398" y="88" width="152" height="50" rx="25"/>
+            <rect x="588" y="88" width="152" height="50" rx="25" stroke="#B71818" stroke-width="2"/>
+            <rect x="778" y="88" width="152" height="50" rx="25" stroke="#B71818" stroke-width="2"/>
+          </g>
+
+          <g text-anchor="middle" font-family="ui-monospace, monospace" font-size="12.5" fill="currentColor">
+            <text x="94"  y="118">CREATED</text>
+            <text x="284" y="118">EXTRACTED</text>
+            <text x="474" y="118">VALIDATED</text>
+            <text x="664" y="118">APPROVED</text>
+            <text x="854" y="118">PARKED</text>
+          </g>
+
+          <g stroke="currentColor" stroke-width="1.5" marker-end="url(#ar4)">
+            <line x1="170" y1="113" x2="206" y2="113"/>
+            <line x1="360" y1="113" x2="396" y2="113"/>
+            <line x1="550" y1="113" x2="586" y2="113"/>
+            <line x1="740" y1="113" x2="776" y2="113"/>
+          </g>
+
+          <!-- refused transition -->
+          <path d="M284,86 C284,34 664,34 664,86" fill="none" stroke="#B71818"
+                stroke-width="1.5" stroke-dasharray="6 5"/>
+          <g stroke="#B71818" stroke-width="2">
+            <line x1="465" y1="36" x2="483" y2="54"/>
+            <line x1="483" y1="36" x2="465" y2="54"/>
+          </g>
+          <text x="474" y="24" text-anchor="middle" font-size="11.5" fill="#B71818"
+                font-family="ui-monospace, monospace">refused &mdash; no token without VALIDATED</text>
+
+          <g font-size="11" fill="currentColor" opacity="0.62" text-anchor="middle">
+            <text x="284" y="160">model reads the PDFs</text>
+            <text x="474" y="160">17 rules per invoice</text>
+            <text x="664" y="160">single-use token minted</text>
+            <text x="854" y="160">status A, one POST each</text>
+          </g>
+
+          <text x="480" y="200" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.75">
+            The token is bound to one batch id and to the exact set of references that passed.
+          </text>
+          <text x="480" y="220" text-anchor="middle" font-size="12" fill="currentColor" opacity="0.55">
+            If the batch changed after validation, the token no longer matches and the write is refused.
+          </text>
+        </svg>
+        <figcaption>
+          <b>Approval is a state transition, not an instruction.</b>
+          <code>POST /batches/&#123;id&#125;/approve</code> is the only path that mints a token, and
+          <code>park()</code> is unreachable without one. One approval covers the whole batch, and
+          nothing is ever posted for payment.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- 08 -->
+    <section id="failure">
+      <h2><span class="h2num">09</span>Failure handling</h2>
+      <p>A failure on one invoice never stops the batch. That is a requirement, not a nicety.</p>
+
+      <div class="scroller">
+        <table>
+          <thead><tr><th>Situation</th><th>Behaviour</th></tr></thead>
+          <tbody>
+            <tr><td><b>Purchase order does not exist</b></td>
+                <td>R01 fails; the ten PO-dependent rules report <code>NOT_APPLICABLE</code>, not
+                    <code>FAIL</code>. Dependent reads are skipped rather than wasted.</td></tr>
+            <tr><td><b>A rule fails</b></td>
+                <td>That invoice is skipped with its reason. Every other invoice proceeds.</td></tr>
+            <tr><td><b>A rule warns</b></td>
+                <td>The invoice still parks, but the required approval level rises to
+                    <span class="pill pill-warn">Manager</span> or
+                    <span class="pill pill-write">Controller</span> per the SOP table.</td></tr>
+            <tr><td><b>SAP read errors</b></td>
+                <td>Raised, not swallowed. A "not found" is a verdict; a backend outage is a fault.</td></tr>
+            <tr><td><b>Park fails mid-batch</b></td>
+                <td>Recorded per invoice. Already-parked documents stay &mdash; they are drafts and
+                    are individually deletable.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 09 -->
+    <section id="security">
+      <h2><span class="h2num">10</span>Security</h2>
+      <ul>
+        <li><b>SAP credentials never leave AWS.</b> The backend has no SAP password; the MCP
+            server reads them from Secrets Manager.</li>
+        <li><b>Cognito machine-to-machine</b> client credentials authenticate the MCP endpoint.</li>
+        <li><b>No secret is logged.</b> Request and response headers are logged by key name
+            only, because a <code>Basic</code> header is reversible base64.</li>
+        <li><b>Configuration is environment-driven.</b> <code>.env</code> is gitignored and
+            <code>.env.example</code> documents every variable.</li>
+        <li><b>Writes are reversible by construction.</b> A parked invoice creates no accounting
+            entry and does not consume the purchase order.</li>
+        <li><b>Every posting is tagged</b> <code>&lt;account-id&gt;-&lt;n&gt;</code>, unique per team
+            and per invoice, so nothing collides on a shared system.</li>
+      </ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="verified">
+      <h2><span class="h2num">11</span>Verified against the live system</h2>
+      <p>
+        These were confirmed by calling SAP, not read off a specification. Each one would
+        have been a silent defect.
+      </p>
+      <ul class="checks">
+        <li>An invoice references <code>InvoicingParty</code> (<span class="mono">17401710</span>),
+            not <code>Supplier</code> (<span class="mono">BP1710</span>).</li>
+        <li><code>NetPriceAmount</code> is the price for <code>NetPriceQuantity</code> units, not
+            for one.</li>
+        <li>A <code>POST</code> carrying <code>$format</code> is rejected as a disallowed system
+            query option.</li>
+        <li>A successful <code>DELETE</code> answers <span class="mono">204</span> with an empty body.</li>
+        <li>Parked invoices do not consume a purchase order, so they must be excluded when
+            computing how much of a line is already invoiced.</li>
+      </ul>
+      <p>
+        The write path was proven end to end: document
+        <span class="mono">5100001509</span> was parked with status
+        <span class="pill pill-write">A</span>, read back field by field, then deleted.
+      </p>
+    </section>
+
+    <!-- 11 -->
+    <section id="status">
+      <h2><span class="h2num">12</span>Build status</h2>
+      <ul class="status">
+        <li><i class="dot done"></i><span class="path">src/backend/mcp/sap_mcp_server.py</span>
+            <span class="pill pill-pass">deployed</span></li>
+        <li><i class="dot done"></i><span class="path">src/backend/rules.py</span>
+            <span class="pill pill-pass">22 tests</span></li>
+        <li><i class="dot done"></i><span class="path">src/backend/sap.py</span>
+            <span class="pill pill-pass">23 tests</span></li>
+        <li><i class="dot todo"></i><span class="path">src/backend/extract.py</span>
+            <span class="pill pill-code">to build</span></li>
+        <li><i class="dot todo"></i><span class="path">src/backend/knowledge.py</span>
+            <span class="pill pill-code">KBs deployed</span></li>
+        <li><i class="dot todo"></i><span class="path">src/backend/agent.py</span>
+            <span class="pill pill-code">to build</span></li>
+        <li><i class="dot todo"></i><span class="path">src/backend/api.py</span>
+            <span class="pill pill-code">to build</span></li>
+        <li><i class="dot todo"></i><span class="path">src/frontend</span>
+            <span class="pill pill-code">to build</span></li>
+      </ul>
+    </section>
+
+    <footer>
+      DMI Hackathon 2026 &middot; Digital Lounge @ Seeburg Kreuzlingen &middot;
+      Topic 3, provided by AWS &middot; source of truth: ARCHITECTURE.md
+    </footer>
+
+  </main>
+</div>
+
+</body>
+</html>
