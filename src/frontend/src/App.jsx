@@ -5,7 +5,7 @@ import Login from './components/Login';
 import Approvals from './views/Approvals';
 import Exceptions from './views/Exceptions';
 import Reports from './views/Reports';
-import { api } from './lib/api';
+import { api, runtime, selectProvider } from './lib/api';
 
 const TABS = [
   { id: 'approvals', label: 'Approvals', icon: 'inbox' },
@@ -41,15 +41,23 @@ export default function App() {
     window.location.hash = ref ? `/${tab}/${ref}` : `/${tab}`;
   }, []);
 
-  const loadBatch = useCallback(async () => {
+  const [source, setSource] = useState(null);
+
+  const loadBatch = useCallback(async (rerun = false) => {
     setLoading(true);
-    const b = await api.getBatch();
-    setBatch(b);
+    try {
+      const b = rerun ? await api.runBatch() : await api.getBatch();
+      setBatch(b);
+      setSource({ ...runtime });
+    } catch (err) {
+      setBatch({ error: err.message, outcomes: [] });
+    }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (user) loadBatch();
+    if (!user) return;
+    selectProvider().then(() => loadBatch());
   }, [user, loadBatch]);
 
   function onParked(results) {
@@ -108,11 +116,20 @@ export default function App() {
         <div className="topbar-end">
           {batch ? (
             <span className="batch-meta t-body-sm t-faint">
+              {source?.source === 'live' ? (
+                <span className="chip chip-success source-chip">
+                  <Icon name="check" size={12} /> Live SAP
+                </span>
+              ) : (
+                <span className="chip chip-warn source-chip" title="The backend is not running; showing seeded data">
+                  <Icon name="warning" size={12} /> Seeded data
+                </span>
+              )}
               {batch.label} · {batch.outcomes.length} invoices · {batch.sapCalls} SAP calls ·{' '}
               {(batch.durationMs / 1000).toFixed(1)}s
             </span>
           ) : null}
-          <button className="btn btn-icon" onClick={loadBatch} aria-label="Reload today's batch" disabled={loading}>
+          <button className="btn btn-icon" onClick={() => loadBatch(true)} aria-label="Re-run today's batch against SAP" disabled={loading}>
             {loading ? <span className="spinner" /> : <Icon name="refresh" size={16} />}
           </button>
           <ThemeToggle theme={theme} setTheme={setTheme} />
@@ -133,6 +150,15 @@ export default function App() {
           <div className="panel empty">
             <span className="spinner" />
             <p className="t-body">Reading today's invoices and validating against SAP…</p>
+            <p className="t-body-sm t-faint">Each invoice is checked against live purchase order and goods receipt data.</p>
+          </div>
+        ) : batch.error ? (
+          <div className="panel empty">
+            <Icon name="error" size={28} />
+            <p className="t-body">{batch.error}</p>
+            <button className="btn btn-outlined" onClick={() => loadBatch(true)}>
+              <Icon name="refresh" size={14} /> Try again
+            </button>
           </div>
         ) : route.tab === 'approvals' ? (
           <Approvals

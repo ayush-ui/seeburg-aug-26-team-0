@@ -402,13 +402,29 @@ const KPI_TARGETS = [
   { id: 'no-po-rate', name: 'No-PO invoice rate', target: 2, unit: '%', direction: 'below' },
 ];
 
-/* --- the fake network ----------------------------------------------------- */
+/* --- provider selection ---------------------------------------------------
+ * The live backend is used whenever it answers /api/health. Otherwise the
+ * seeded data below keeps the workspace openable. `source` tells the UI which
+ * one is in play so the two are never mistaken for each other. */
+
+import { live, backendReachable } from './client';
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let parked = {};
 
-export const api = {
+export const runtime = { source: 'seeded', providers: null, batchId: null };
+
+export async function selectProvider() {
+  const health = await backendReachable();
+  if (health) {
+    runtime.source = 'live';
+    runtime.providers = health.providers;
+  }
+  return runtime;
+}
+
+export const mock = {
   async login(username, password) {
     await delay(420);
     if (username === 'admin' && password === 'admin') {
@@ -466,6 +482,62 @@ export const api = {
     await delay(600);
     return buildReport(id, outcomes);
   },
+};
+
+/* One surface for the views. Each call goes to the backend when it is up and
+ * to the seeded data when it is not, so no component knows the difference. */
+export const api = {
+  login: (u, p) => mock.login(u, p),
+
+  async getBatch() {
+    if (runtime.source === 'live') {
+      const batch = await live.getBatch();
+      runtime.batchId = batch.id;
+      return batch;
+    }
+    return mock.getBatch();
+  },
+
+  async runBatch() {
+    if (runtime.source === 'live') {
+      const batch = await live.runBatch();
+      runtime.batchId = batch.id;
+      return batch;
+    }
+    return mock.getBatch();
+  },
+
+  approve: (references) =>
+    runtime.source === 'live'
+      ? live.approve(runtime.batchId, references)
+      : mock.approve(references),
+
+  park: (token, references) =>
+    runtime.source === 'live'
+      ? live.park(runtime.batchId, token, references)
+      : mock.park(token, references),
+
+  async guidance(sopRef) {
+    if (runtime.source !== 'live') return mock.guidance(sopRef);
+    try {
+      return await live.guidance(sopRef);
+    } catch {
+      return null; // no SOP entry published for this clause
+    }
+  },
+
+  chat: (reference, question, outcome) =>
+    runtime.source === 'live'
+      ? live.chat(runtime.batchId, reference, question)
+      : mock.chat(reference, question, outcome),
+
+  reportCatalogue: () => REPORT_CATALOGUE,
+  kpiTargets: () => KPI_TARGETS,
+
+  generateReport: (id, outcomes) =>
+    runtime.source === 'live'
+      ? live.generateReport(id, runtime.batchId)
+      : mock.generateReport(id, outcomes),
 };
 
 /* --- canned exception assistant ------------------------------------------

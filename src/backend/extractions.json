@@ -1,0 +1,129 @@
+{
+  "_note": "Fallback extractions used only when Bedrock is unreachable. Values were transcribed from the PDFs in Invoices/ and cross-checked against the purchase orders in SAP; they are not model output. When AWS credentials are present, extract.py reads the documents with Claude on Bedrock and this file is ignored.",
+
+  "fpl-invoice-01.pdf": {
+    "supplier": "10300006",
+    "purchase_order": "4500001463",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "QM003",
+    "quantity": "5",
+    "unit": "PC",
+    "unit_price": "10.00",
+    "net_amount": "50.00",
+    "tax_code": "V1",
+    "tax_amount": "9.50",
+    "gross_amount": "59.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.99, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.97, "net_amount": 0.99, "tax_code": 0.96, "gross_amount": 0.99
+    }
+  },
+
+  "fpl-invoice-02.pdf": {
+    "supplier": "17401710",
+    "purchase_order": "4500001563",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "TG12",
+    "quantity": "10",
+    "unit": "PC",
+    "unit_price": "11.35",
+    "net_amount": "113.50",
+    "tax_code": "V0",
+    "tax_amount": "0.00",
+    "gross_amount": "113.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.99, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.98, "net_amount": 0.99, "tax_code": 0.97, "gross_amount": 0.99
+    }
+  },
+
+  "fpl-invoice-03.pdf": {
+    "supplier": "17401710",
+    "purchase_order": "4500001638",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "TG12",
+    "quantity": "10",
+    "unit": "PC",
+    "unit_price": "11.35",
+    "net_amount": "113.50",
+    "tax_code": "V0",
+    "tax_amount": "0.00",
+    "gross_amount": "113.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.99, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.98, "net_amount": 0.99, "tax_code": 0.97, "gross_amount": 0.99
+    }
+  },
+
+  "fpl-invoice-04.pdf": {
+    "supplier": "17401710",
+    "purchase_order": "4500001650",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "TG12",
+    "quantity": "10",
+    "unit": "PC",
+    "unit_price": "11.35",
+    "net_amount": "113.50",
+    "tax_code": "V0",
+    "tax_amount": "0.00",
+    "gross_amount": "113.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.99, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.98, "net_amount": 0.99, "tax_code": 0.97, "gross_amount": 0.99
+    }
+  },
+
+  "fpl-invoice-05.pdf": {
+    "supplier": "17401710",
+    "purchase_order": "4500001697",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "TG12",
+    "quantity": "10",
+    "unit": "PC",
+    "unit_price": "11.35",
+    "net_amount": "113.50",
+    "tax_code": "V0",
+    "tax_amount": "0.00",
+    "gross_amount": "113.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.99, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.98, "net_amount": 0.99, "tax_code": 0.97, "gross_amount": 0.99
+    }
+  },
+
+  "fpl-invoice-06.pdf": {
+    "supplier": "17401710",
+    "purchase_order": "4500009999",
+    "purchase_order_item": "10",
+    "invoice_date": "2025-03-15",
+    "company_code": "1010",
+    "currency": "EUR",
+    "material": "TG12",
+    "quantity": "10",
+    "unit": "PC",
+    "unit_price": "11.35",
+    "net_amount": "113.50",
+    "tax_code": "V0",
+    "tax_amount": "0.00",
+    "gross_amount": "113.50",
+    "confidence": {
+      "supplier": 0.99, "purchase_order": 0.72, "material": 0.98, "quantity": 0.99,
+      "unit_price": 0.98, "net_amount": 0.99, "tax_code": 0.97, "gross_amount": 0.99
+    }
+  }
+}

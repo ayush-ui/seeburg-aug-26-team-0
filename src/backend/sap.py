@@ -113,6 +113,15 @@ class SapClient:
         self._initialised = False
         self.call_count = 0  # observability: how many SAP reads a batch cost
 
+        # Read caches, scoped to one client and therefore to one batch run.
+        # A batch usually holds several invoices against the same purchase
+        # order and the same vendor; without these, every AgentCore round trip
+        # is paid again for an answer already in memory.
+        self._po_header: dict[str, PoHeader | None] = {}
+        self._po_item: dict[tuple[str, str], PoItem | None] = {}
+        self._receipts: dict[tuple[str, str], list[GoodsReceipt]] = {}
+        self._used_refs: dict[str, frozenset[str]] = {}
+
     # --- plumbing ---------------------------------------------------------
 
     def _bearer(self) -> str:
@@ -209,15 +218,18 @@ class SapClient:
     def get_po_header(self, purchase_order: str) -> PoHeader | None:
         """None when the purchase order does not exist - that is rule R01's job,
         not an exception. Any other SAP failure still raises."""
+        if purchase_order in self._po_header:
+            return self._po_header[purchase_order]
         try:
             raw = self.odata(
                 f"API_PURCHASEORDER_PROCESS_SRV/A_PurchaseOrder('{purchase_order}')?$format=json"
             )["d"]
         except SapError as exc:
             if _is_not_found(exc):
+                self._po_header[purchase_order] = None
                 return None
             raise
-        return PoHeader(
+        header = PoHeader(
             purchase_order=raw["PurchaseOrder"],
             supplier=raw["InvoicingParty"],
             company_code=raw["CompanyCode"],
@@ -225,8 +237,13 @@ class SapClient:
             is_deleted=bool(raw.get("PurchasingDocumentDeletionCode")),
             is_blocked=bool(raw.get("ReleaseIsNotCompleted")),
         )
+        self._po_header[purchase_order] = header
+        return header
 
     def get_po_item(self, purchase_order: str, item: str) -> PoItem | None:
+        key = (purchase_order, item)
+        if key in self._po_item:
+            return self._po_item[key]
         try:
             raw = self.odata(
                 f"API_PURCHASEORDER_PROCESS_SRV/A_PurchaseOrderItem"
@@ -234,6 +251,7 @@ class SapClient:
             )["d"]
         except SapError as exc:
             if _is_not_found(exc):
+                self._po_item[key] = None
                 return None
             raise
 
@@ -241,7 +259,7 @@ class SapClient:
         price_qty = D(raw.get("NetPriceQuantity") or "1")
         unit_price = D(raw["NetPriceAmount"]) / (price_qty if price_qty else D("1"))
 
-        return PoItem(
+        parsed = PoItem(
             purchase_order=raw["PurchaseOrder"],
             item=raw["PurchaseOrderItem"],
             material=raw.get("Material", ""),
@@ -251,15 +269,20 @@ class SapClient:
             already_invoiced_quantity=self.get_invoiced_quantity(purchase_order, item),
             gr_based_invoice_verification=bool(raw.get("InvoiceIsGoodsReceiptBased")),
         )
+        self._po_item[key] = parsed
+        return parsed
 
     def get_goods_receipts(self, purchase_order: str, item: str) -> list[GoodsReceipt]:
         """Movement 101 receipts and 102 reversals for one PO line."""
+        key = (purchase_order, item)
+        if key in self._receipts:
+            return self._receipts[key]
         raw = self.odata(
             "API_MATERIAL_DOCUMENT_SRV/A_MaterialDocumentItem"
             f"?$filter=PurchaseOrder eq '{purchase_order}' and PurchaseOrderItem eq '{item}'"
             "&$format=json"
         )
-        return [
+        receipts = [
             GoodsReceipt(
                 purchase_order=row["PurchaseOrder"],
                 purchase_order_item=row["PurchaseOrderItem"],
@@ -270,6 +293,8 @@ class SapClient:
             for row in raw.get("d", {}).get("results", [])
             if row.get("GoodsMovementType") in ("101", "102")
         ]
+        self._receipts[key] = receipts
+        return receipts
 
     def get_invoiced_quantity(self, purchase_order: str, item: str) -> Decimal:
         """How much of this PO line has genuinely been invoiced.
@@ -330,6 +355,8 @@ class SapClient:
         not a duplicate. Filtering by prefix keeps the response small on a
         system shared with other teams.
         """
+        if invoicing_party in self._used_refs:
+            return self._used_refs[invoicing_party]
         prefix = self.config.reference_prefix
         raw = self.odata(
             "API_SUPPLIERINVOICE_PROCESS_SRV/A_SupplierInvoice"
@@ -337,11 +364,13 @@ class SapClient:
             f" and startswith(SupplierInvoiceIDByInvcgParty,'{prefix}')"
             "&$select=SupplierInvoiceIDByInvcgParty&$format=json"
         )
-        return frozenset(
+        refs = frozenset(
             row["SupplierInvoiceIDByInvcgParty"]
             for row in raw.get("d", {}).get("results", [])
             if row.get("SupplierInvoiceIDByInvcgParty")
         )
+        self._used_refs[invoicing_party] = refs
+        return refs
 
     def build_context(self, invoice: Invoice) -> SapContext:
         """Every read the rules need for one invoice, in one call.
@@ -405,6 +434,8 @@ class SapClient:
             method="POST",
             body=body,
         )["d"]
+        self._used_refs.pop(invoice.supplier, None)
+        self._po_item.pop((invoice.purchase_order, invoice.purchase_order_item), None)
         return ParkResult(
             source_file=invoice.source_file,
             reference=invoice.reference,

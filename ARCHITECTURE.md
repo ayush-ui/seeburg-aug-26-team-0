@@ -205,13 +205,21 @@ not exist.
 
 ### Call budget
 
-A cold `build_context` costs 4 to 6 calls. Two caches cut a six-invoice batch
-from roughly 32 calls to about 14:
+Measured on the six-invoice demo batch against the live system: **32 SAP calls,
+76 seconds**.
 
-- **Purchase order cache**, keyed by `(po, item)`. Two invoices against the same
-  PO read it once.
-- **Vendor reference cache**, keyed by `InvoicingParty`. The demo batch has two
-  vendors, so R16 costs 2 calls rather than 6.
+Each `build_context` costs 4 to 6 calls, and a single MCP round trip takes
+several seconds - AgentCore cold paths plus SAP itself. Call count is therefore
+not the lever; concurrency is.
+
+- **Concurrent reads.** Each invoice's reads are independent of every other
+  invoice's, so they run in a thread pool with one client each. Wall time tracks
+  the slowest single invoice rather than the sum: **202 seconds became 76**.
+- **Read caches** on the client, keyed by `(po, item)` and by `InvoicingParty`.
+  These matter when a batch holds several invoices against the same purchase
+  order. On the demo batch every invoice targets a different PO, so only the
+  vendor cache hits, saving 4 calls of 32. Worth having, not worth quoting as
+  the reason the batch is fast.
 
 The write phase is exactly one POST per passing invoice. No batching, because a
 partial failure must be attributable to one invoice.
@@ -338,11 +346,11 @@ without a second model call.
 | `src/backend/mcp/sap_mcp_server.py` | Deployed on AgentCore, verified live |
 | `src/backend/rules.py` | Complete, 17 rules, 22 tests |
 | `src/backend/sap.py` | Complete, 23 tests, park and delete verified against SAP |
-| `src/backend/extract.py` | To build |
-| `src/backend/knowledge.py` | To build — knowledge bases already deployed |
-| `src/backend/agent.py` | To build |
-| `src/backend/api.py` | To build |
-| `src/frontend` | To build |
+| `src/backend/extract.py` | Complete - Bedrock vision, with a recorded fallback |
+| `src/backend/knowledge.py` | Complete - Bedrock KB, falling back to the SOP markdown |
+| `src/backend/agent.py` | Complete - Strands when Bedrock is reachable, grounded responder otherwise |
+| `src/backend/api.py` | Complete - batch, approve, park, guidance, chat, reports |
+| `src/frontend` | Complete - approvals, exceptions and reports |
 
 ## Verified against the live system
 
