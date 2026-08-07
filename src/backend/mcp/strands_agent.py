@@ -42,7 +42,7 @@ def search_sap_sops(query: str) -> str:
     
     NEVER invent exceptions or resolutions. ONLY return documented procedures from knowledge base.
     """
-    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="HRQMR9REUCexcd", retrievalQuery={'text': query})
+    response = boto3.client('bedrock-agent-runtime', region_name='us-east-1').retrieve(knowledgeBaseId="HRQMR9REUC", retrievalQuery={'text': query})
     results = [result.get('content', {}).get('text', '') for result in response.get('retrievalResults', []) if result.get('content', {}).get('text', '')]
     return '\n\n'.join(results) if results else "No relevant information found in knowledge base."
 

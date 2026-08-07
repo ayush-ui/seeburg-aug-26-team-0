@@ -21,17 +21,29 @@ from __future__ import annotations
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from rules import Invoice
+
+# The ids below are read at import, and credentials come from the same file.
+# api.py has already called this; the repeat is a no-op and stops this module
+# reporting "cached" when running directly with credentials configured.
+load_dotenv()
 
 CACHE_PATH = Path(os.environ.get("EXTRACTION_CACHE", Path(__file__).resolve().parent / "extractions.json"))
 MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+# Concurrent vision reads. Kept modest deliberately: these are large multimodal
+# requests and Bedrock throttles them per account, so raising it past the size
+# of a normal batch buys nothing and risks ThrottlingException.
+EXTRACT_CONCURRENCY = int(os.environ.get("EXTRACT_CONCURRENCY", "6"))
 
 PROMPT = """Read this supplier invoice and return one JSON object, nothing else.
 
@@ -249,14 +261,37 @@ def extract(pdf: Path, reference: str) -> Extraction:
 
 
 def extract_batch(pdfs: list[Path], prefix: str, start: int = 1) -> list[Extraction]:
-    """Read a batch. One unreadable document does not stop the others."""
-    out: list[Extraction] = []
-    for i, pdf in enumerate(pdfs, start):
+    """Read a batch. One unreadable document does not stop the others.
+
+    Each document is an independent Bedrock call taking the better part of ten
+    seconds, and no document's reading depends on any other's, so they run
+    concurrently exactly as the SAP reads in `api.run_batch` do. Wall time then
+    tracks the slowest single document instead of the sum of all of them.
+
+    Order is part of the contract: the caller zips the results back against the
+    file list, and the reference number is fixed by a document's position, not
+    by which one happens to finish first. `ThreadPoolExecutor.map` yields in
+    input order, so both hold.
+    """
+    if not pdfs:
+        return []
+
+    # Build the extractor before the pool rather than inside a worker. It is
+    # cached, but the cache is not atomic, and threads racing it would each
+    # construct their own client.
+    extractor()
+
+    def read(index: int) -> Extraction:
         try:
-            out.append(extract(pdf, f"{prefix}-{i}"))
-        except ExtractionError as exc:
-            out.append(Extraction(invoice=None, confidence={}, source=str(exc)))
-    return out
+            return extract(pdfs[index], f"{prefix}-{index + start}")
+        except Exception as exc:  # noqa: BLE001 - recorded against its document
+            # Concurrency makes Bedrock throttling a real outcome, and it must
+            # not sink the whole batch when one document trips it.
+            reason = str(exc) if isinstance(exc, ExtractionError) else f"{type(exc).__name__}: {exc}"
+            return Extraction(invoice=None, confidence={}, source=reason)
+
+    with ThreadPoolExecutor(max_workers=min(EXTRACT_CONCURRENCY, len(pdfs))) as pool:
+        return list(pool.map(read, range(len(pdfs))))
 
 
 if __name__ == "__main__":
@@ -280,3 +315,41 @@ if __name__ == "__main__":
 
     print(f"extractor: {extractor().source}")
     print("normalisation OK")
+
+    # extract_batch runs concurrently, so the things concurrency breaks
+    # silently get checked: result order, and the reference number that is
+    # bound to a document's position rather than to when it finished.
+    class _StubExtractor:
+        source = "stub"
+
+        def read(self, pdf: Path) -> dict:
+            if "unreadable" in pdf.name:
+                raise ExtractionError(f"{pdf.name}: could not read supplier")
+            return {
+                "supplier": "10300006", "purchase_order": "4500001463",
+                "purchase_order_item": "10", "invoice_date": "2025-03-15",
+                "company_code": "1010", "currency": "EUR", "material": "M-1",
+                "quantity": "1", "unit": "PC", "unit_price": "10.00",
+                "net_amount": "10.00", "tax_code": "V0", "tax_amount": "0",
+                "gross_amount": "10.00", "confidence": {"supplier": 1.0},
+            }
+
+    extractor = lambda: _StubExtractor()  # noqa: E731 - swapped in for the check
+
+    paths = [Path(f"invoice-{n:02d}.pdf") for n in range(1, 8)]
+    paths.insert(3, Path("unreadable.pdf"))
+    batch = extract_batch(paths, "PRE", start=3)
+
+    assert len(batch) == len(paths), f"expected {len(paths)} results, got {len(batch)}"
+    readable = [(p, e) for p, e in zip(paths, batch) if p.name != "unreadable.pdf"]
+    assert all(e.invoice.source_file == p.name for p, e in readable), "results came back out of order"
+    assert [e.invoice.reference for _, e in readable] == [
+        f"PRE-{i + 3}" for i, p in enumerate(paths) if p.name != "unreadable.pdf"
+    ], "reference numbering drifted from document position"
+
+    failed = batch[3]
+    assert failed.invoice is None, "the unreadable document should not have produced an invoice"
+    assert "could not read supplier" in failed.source, f"failure reason lost: {failed.source}"
+    assert extract_batch([], "PRE") == [], "an empty batch should not open a pool"
+
+    print(f"extract_batch: {len(batch)} documents, order and numbering OK, 1 failure recorded")

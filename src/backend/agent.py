@@ -42,6 +42,8 @@ Rules you must follow:
   asked whether the invoice can be paid, restate what the finding says.
 - Never invent a procedure. Call sop_guidance for the clause the finding names
   and answer from what it returns. If it returns nothing, say so.
+- Never invent an OData path. Call find_odata_service when asked where in SAP
+  something lives, and quote what it returns.
 - Never claim to have changed anything in SAP. You can read, not write.
 - Cite the SOP clause whenever you give resolution steps.
 - Be concise and concrete. Name the owner and the timeframe for each step.
@@ -96,6 +98,17 @@ def _build_strands_agent(outcome):
         return f"{found.title}\n\nCommon causes:\n{causes}\n\nSteps:\n{steps}\n\n{found.policy}"
 
     @tool
+    def find_odata_service(question: str) -> str:
+        """Look up which SAP OData service and path would answer a question
+        about SAP data that the six fixed reads do not cover, such as "where
+        do I check the vendor's bank details". Returns a path to quote, not
+        data - it does not call SAP."""
+        path = knowledge.odata_path(question)
+        if path is None:
+            return "The API knowledge base has no path for that question."
+        return path
+
+    @tool
     def read_purchase_order() -> str:
         """Re-read this invoice's purchase order, its item and its goods
         receipts from SAP. Read-only."""
@@ -146,7 +159,7 @@ def _build_strands_agent(outcome):
 
     return Agent(
         model=BedrockModel(model_id=MODEL_ID, region_name=AWS_REGION),
-        tools=[sop_guidance, read_purchase_order, revalidate],
+        tools=[sop_guidance, find_odata_service, read_purchase_order, revalidate],
         system_prompt=(
             f"{SYSTEM_PROMPT}\n\n"
             f"Invoice {invoice.source_file}, reference {invoice.reference}, "

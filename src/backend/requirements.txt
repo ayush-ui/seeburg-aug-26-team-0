@@ -1,2 +1,8 @@
 requests>=2.31.0
 python-dotenv>=1.0.0
+# Knowledge Base retrieval and Bedrock vision extraction. Without it every
+# Bedrock path silently selects its local fallback.
+boto3>=1.34.0
+# The exception chat agent. Without it agent.py answers from the grounded
+# responder instead, which needs no credentials.
+strands-agents>=1.50.0
