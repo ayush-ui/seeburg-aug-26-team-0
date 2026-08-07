@@ -86,8 +86,9 @@ demo.
 reported **40 PC already invoiced**, so every invoice against it raised a
 quantity exception.
 
-The cause was another team. Eight *parked* drafts from account
-`516359819848` referenced that purchase order, and we were counting them.
+The cause was another team. Eight *parked* drafts from a different
+participant's account referenced that purchase order, and we were counting
+them.
 
 **Why it matters.** A parked invoice is a draft. It creates no accounting entry
 and does not consume the purchase order — which is precisely why parking is
