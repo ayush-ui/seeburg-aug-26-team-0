@@ -4,10 +4,12 @@ import { Chip } from './components/Chip';
 import Login from './components/Login';
 import Approvals from './views/Approvals';
 import Exceptions from './views/Exceptions';
+import Intake from './views/Intake';
 import Reports from './views/Reports';
 import { api, runtime, selectProvider } from './lib/api';
 
 const TABS = [
+  { id: 'intake', label: 'Intake', icon: 'download' },
   { id: 'approvals', label: 'Approvals', icon: 'inbox' },
   { id: 'exceptions', label: 'Exceptions', icon: 'flag' },
   { id: 'reports', label: 'Reports', icon: 'chart' },
@@ -43,10 +45,10 @@ export default function App() {
 
   const [source, setSource] = useState(null);
 
-  const loadBatch = useCallback(async (rerun = false) => {
+  const loadBatch = useCallback(async (rerun = false, files = undefined) => {
     setLoading(true);
     try {
-      const b = rerun ? await api.runBatch() : await api.getBatch();
+      const b = rerun ? await api.runBatch(files) : await api.getBatch();
       setBatch(b);
       setSource({ ...runtime });
     } catch (err) {
@@ -81,7 +83,7 @@ export default function App() {
 
   const approvals = batch ? batch.outcomes.filter((o) => o.canPark).length : 0;
   const exceptions = batch ? batch.outcomes.filter((o) => !o.canPark).length : 0;
-  const counts = { approvals, exceptions, reports: null };
+  const counts = { intake: null, approvals, exceptions, reports: null };
 
   return (
     <div className="app">
@@ -146,7 +148,26 @@ export default function App() {
       </header>
 
       <main className="content">
-        {!batch ? (
+        {/* Documents that could not be read never reach a queue, so they are
+            reported here rather than vanishing from the batch. */}
+        {batch?.unreadable?.length ? (
+          <div className="notice notice-warn unreadable-banner" role="status">
+            <Icon name="warning" size={14} />
+            <span>
+              {batch.unreadable.length} document{batch.unreadable.length === 1 ? '' : 's'} could not
+              be read: {batch.unreadable.map((u) => u.sourceFile).join(', ')}. {batch.unreadable[0].reason}
+            </span>
+          </div>
+        ) : null}
+        {route.tab === 'intake' ? (
+          <Intake
+            busy={loading}
+            onProcessed={async (files) => {
+              await loadBatch(true, files);
+              go('approvals');
+            }}
+          />
+        ) : !batch ? (
           <div className="panel empty">
             <span className="spinner" />
             <p className="t-body">Reading today's invoices and validating against SAP…</p>

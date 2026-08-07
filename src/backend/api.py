@@ -30,7 +30,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -174,12 +174,34 @@ class Batch:
 BATCHES: dict[str, Batch] = {}
 
 
-def run_batch() -> Batch:
-    """Read today's documents, validate every one against live SAP."""
-    started = time.monotonic()
-    batch = Batch(id=f"batch-{datetime.now(timezone.utc):%Y-%m-%d-%H%M%S}", label="Today's intake")
+def inbox_files() -> list[Path]:
+    return sorted(INVOICE_DIR.glob("*.pdf"))
 
-    pdfs = sorted(INVOICE_DIR.glob("*.pdf"))
+
+def resolve(names: list[str]) -> list[Path]:
+    """Map file names onto the inbox. A name that escapes the inbox, or
+    that is not there, is refused rather than silently skipped."""
+    inbox = INVOICE_DIR.resolve()
+    paths = []
+    for name in names:
+        path = (INVOICE_DIR / name).resolve()
+        if path.parent != inbox or not path.is_file():
+            raise HTTPException(404, f"No such invoice in the inbox: {name}")
+        paths.append(path)
+    return paths
+
+
+def run_batch(names: list[str] | None = None) -> Batch:
+    """Validate the selected documents against live SAP.
+
+    `names` selects which files in the inbox to process; the whole inbox
+    runs when it is omitted, which is what the daily scheduled run does.
+    """
+    started = time.monotonic()
+    label = "Today's intake" if names is None else f"Selected: {len(names)} invoices"
+    batch = Batch(id=f"batch-{datetime.now(timezone.utc):%Y-%m-%d-%H%M%S}", label=label)
+
+    pdfs = resolve(names) if names is not None else inbox_files()
     if not pdfs:
         raise HTTPException(404, f"No invoices found in {INVOICE_DIR}")
 
@@ -275,9 +297,60 @@ def health() -> dict:
     }
 
 
+class BatchRequest(BaseModel):
+    files: list[str] | None = None
+
+
+@app.get("/api/inbox")
+def inbox() -> list[dict]:
+    """What is waiting to be processed, and what has already been parked."""
+    parked_files = {
+        o.invoice.source_file
+        for b in BATCHES.values()
+        for o in b.outcomes
+        if o.invoice.reference in b.parked
+    }
+    seen = {o.invoice.source_file for b in BATCHES.values() for o in b.outcomes}
+    out = []
+    for path in inbox_files():
+        stat = path.stat()
+        out.append({
+            "name": path.name,
+            "sizeBytes": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            "processed": path.name in seen,
+            "parked": path.name in parked_files,
+        })
+    return out
+
+
+@app.post("/api/uploads")
+async def upload(files: list[UploadFile] = File(...)) -> dict:
+    """Accept dropped documents into the inbox.
+
+    Only PDFs, and only by base name - an uploaded name never gets to
+    choose where on disk it lands.
+    """
+    INVOICE_DIR.mkdir(parents=True, exist_ok=True)
+    saved, rejected = [], []
+    for upload_file in files:
+        name = Path(upload_file.filename or "").name
+        if not name.lower().endswith(".pdf"):
+            rejected.append({"name": name or "(unnamed)", "reason": "not a PDF"})
+            continue
+        data = await upload_file.read()
+        if not data.startswith(b"%PDF"):
+            rejected.append({"name": name, "reason": "not a readable PDF"})
+            continue
+        (INVOICE_DIR / name).write_bytes(data)
+        saved.append(name)
+        log.info("uploaded %s (%d bytes)", name, len(data))
+    return {"saved": saved, "rejected": rejected}
+
+
 @app.post("/api/batches")
-def create_batch() -> dict:
-    return run_batch().as_dict()
+def create_batch(body: BatchRequest | None = None) -> dict:
+    return run_batch(body.files if body else None).as_dict()
 
 
 @app.get("/api/batches/latest")

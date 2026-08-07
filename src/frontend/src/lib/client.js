@@ -59,8 +59,24 @@ export const live = {
     return absolutePdfUrls(await call('/api/batches/latest'));
   },
 
-  async runBatch() {
-    return absolutePdfUrls(await call('/api/batches', { method: 'POST' }));
+  async runBatch(files) {
+    return absolutePdfUrls(
+      await call('/api/batches', { method: 'POST', body: JSON.stringify({ files: files ?? null }) }),
+    );
+  },
+
+  async inbox() {
+    return call('/api/inbox');
+  },
+
+  async upload(fileList) {
+    // multipart, so the Content-Type header is left to the browser to set
+    // with its own boundary.
+    const form = new FormData();
+    for (const file of fileList) form.append('files', file, file.name);
+    const response = await fetch(`${BASE}/api/uploads`, { method: 'POST', body: form });
+    if (!response.ok) throw new Error(`Upload failed: HTTP ${response.status}`);
+    return response.json();
   },
 
   async approve(batchId, references) {

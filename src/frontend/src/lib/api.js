@@ -498,13 +498,30 @@ export const api = {
     return mock.getBatch();
   },
 
-  async runBatch() {
+  async runBatch(files) {
     if (runtime.source === 'live') {
-      const batch = await live.runBatch();
+      const batch = await live.runBatch(files);
       runtime.batchId = batch.id;
       return batch;
     }
     return mock.getBatch();
+  },
+
+  async inbox() {
+    if (runtime.source === 'live') return live.inbox();
+    // Seeded mode mirrors the demo documents so the view still renders.
+    return OUTCOMES.slice(0, 6).map((o, i) => ({
+      name: `fpl-invoice-0${i + 1}.pdf`,
+      sizeBytes: 2100,
+      modified: new Date().toISOString(),
+      processed: true,
+      parked: false,
+    }));
+  },
+
+  upload: (fileList) => {
+    if (runtime.source === 'live') return live.upload(fileList);
+    throw new Error('Uploading needs the backend running.');
   },
 
   approve: (references) =>

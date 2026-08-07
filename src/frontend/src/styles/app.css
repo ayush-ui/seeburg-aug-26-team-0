@@ -199,6 +199,14 @@ tr.no-hover:hover {
   min-height: 0;
   overflow-y: auto;
 }
+/* Panels clip their own content (`overflow: hidden` gives them rounded
+   corners), so as flex items they must keep their natural height. Letting them
+   shrink hides the overflow instead of scrolling it - which silently swallowed
+   most of the 17 rules when the validation panel was expanded. */
+.detail-side > .panel,
+.reports-side > .panel {
+  flex: none;
+}
 
 table.fields {
   width: 100%;
@@ -874,3 +882,102 @@ table.fields tr:last-child td {
   }
 }
 .source-chip { margin-right: 8px; }
+
+/* ---------- intake -------------------------------------------------------- */
+
+.view-intake {
+  grid-template-columns: minmax(300px, 0.55fr) minmax(0, 1.45fr);
+}
+.intake-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-height: 0;
+  overflow-y: auto;
+}
+.intake-left > .panel {
+  flex: none;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-5);
+  border: 2px dashed var(--md-outline);
+  border-radius: var(--radius);
+  background: var(--md-surface-low);
+  text-align: center;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+  flex: none;
+}
+.dropzone.is-dragging {
+  border-color: var(--md-primary);
+  background: var(--md-selected-overlay);
+}
+.dropzone-icon {
+  color: var(--md-on-surface-faint);
+  transform: rotate(180deg);
+}
+.dropzone .btn {
+  margin-top: var(--sp-2);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--md-body-sm);
+  flex: none;
+}
+.notice svg {
+  flex: none;
+}
+.notice-success {
+  background: var(--md-success-container);
+  border-color: var(--md-success);
+  color: var(--md-success);
+}
+.notice-warn {
+  background: var(--md-warning-container);
+  border-color: var(--md-warning);
+  color: var(--md-warning);
+}
+.notice-error {
+  background: var(--md-error-container);
+  border-color: var(--md-error);
+  color: var(--md-error);
+}
+.intake-offline {
+  margin: var(--sp-3);
+}
+
+.intake-steps {
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4) var(--sp-8);
+  color: var(--md-on-surface-variant);
+  font-size: var(--md-body-sm);
+}
+.intake-steps li {
+  margin-bottom: var(--sp-2);
+}
+
+.col-check {
+  width: 40px;
+  text-align: center;
+}
+.col-check input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--md-primary);
+  cursor: pointer;
+}
+
+.unreadable-banner {
+  margin-bottom: var(--sp-3);
+}
