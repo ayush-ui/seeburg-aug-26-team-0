@@ -3,3 +3,9 @@
 __pycache__/
 node_modules/
 *.pem
+
+# Pitch materials. The repository is public and is cloned after the event for
+# automated analysis; the deck and its assets are not part of what is judged
+# from the code. Keep them out of it.
+docs/pitch.html
+docs/[Mm]atchbook*
