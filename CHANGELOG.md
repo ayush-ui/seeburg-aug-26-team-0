@@ -4,6 +4,19 @@ Newest first. Every behavioural change gets an entry.
 
 ---
 
+## Documentation — `e336269`, `ae3a2e4`
+
+**Added** `README.md`: requirements, install, the two commands to run it, a
+suggested demo path, tests, the environment variables that matter, the tech
+stack and the repository layout, linking to the other documents rather than
+repeating them.
+
+**Changed** the repository root to hold only what a newcomer needs first.
+`ARCHITECTURE.md` and `LESSONS-LEARNED.md` moved into `docs/`, beside the
+standalone architecture page. Cross-references updated.
+
+---
+
 ## Intake and the validation panel — `d11fdf6`
 
 **Added** an Intake tab as the entry point to the workspace. Documents can be

@@ -29,10 +29,8 @@ These are explicit scoring criteria in
 `checklists/members.md` and `templates/SUBMISSION_CHECKLIST.md`, and they are
 currently the cheapest points available.
 
-- [ ] **`README.md`** — project description, tech stack, setup, usage, team
-      members with GitHub links, demo video link. The checklist notes that a
-      well-documented project scores significantly higher than a feature-rich
-      undocumented one.
+- [x] **`README.md`** — done. Team members and the demo video link still
+      need filling in.
 - [ ] **`/result/` folder** — outputs for the example prompts, clearly
       labelled and viewable. Listed under Completeness; currently absent.
 - [ ] **Add `hackmaster-dmi` as a read-only collaborator** — required of every
