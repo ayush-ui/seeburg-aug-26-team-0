@@ -4,6 +4,57 @@ Newest first. Every behavioural change gets an entry.
 
 ---
 
+## The Bedrock paths, run for the first time
+
+**Fixed** the Knowledge Base call itself. Both workshop knowledge bases are
+type `MANAGED`, which rejects `vectorSearchConfiguration` outright — every
+retrieval had been failing with a `ValidationException` the moment credentials
+existed. `managedSearchConfiguration` is the supported key.
+
+**Fixed** `boto3` missing from `requirements.txt`. Without it every Bedrock
+path selected its local fallback silently, which is why nothing had ever
+noticed the call was malformed. `strands-agents` added alongside it.
+
+**Changed** SOP guidance to read the repository copy of the clause and treat
+the Knowledge Base as the fallback, rather than the reverse. Retrieval was
+reassembled from several passages, and the managed chunker splits step tables
+away from their `### 6.6` heading — the result was a correct clause title
+above another clause's procedure. Passages are now parsed one at a time and
+scoped to the document the reference names, because sections 6.1 to 6.3 exist
+in both SOPs and the rules cite all three from `AP-SOP-001`. Set
+`FORCE_SOP_RETRIEVAL=1` to make retrieval drive the answer for a demo; the
+clause stays correct but may carry fewer steps than the repository copy.
+
+**Fixed** `odata_path` returning `help.sap.com` documentation links. The API
+knowledge base holds OpenAPI specifications, so an entity path is a JSON key
+(`"/A_PurchaseOrder('{PurchaseOrder}')"`), not any URL in the passage.
+
+**Added** `find_odata_service` to the Strands agent. The API knowledge base
+previously had no caller anywhere in the codebase.
+
+**Changed** `extract_batch` to read documents concurrently, as `run_batch`
+already does for SAP. Six documents fell from 49.4s to 11.7s. Order and the
+position-derived reference number are both preserved and asserted, and a
+throttled document is now recorded against itself instead of failing the
+batch.
+
+**Fixed** `extract.py` and `knowledge.py` not calling `load_dotenv()`. Both
+read configuration at import, so running either directly reported `cached` or
+the wrong knowledge base id even with `.env` correctly filled in. The server
+was unaffected — `api.py` loads the file before importing them.
+
+**Added** `SOP_KNOWLEDGE_BASE_ID`, `API_KNOWLEDGE_BASE_ID`,
+`FORCE_SOP_RETRIEVAL` and `EXTRACT_CONCURRENCY` to `.env.example`. The SOP id
+had been the 14-character literal `HRQMR9REUCexcd` in both `knowledge.py` and
+`mcp/strands_agent.py`; knowledge base ids are 10 characters and the real one
+is `HRQMR9REUC`. Both corrected, and the working copy is now environment-driven.
+
+**Measured**, against the live account: a six-invoice batch takes 80.7s with
+Bedrock vision and Knowledge Base retrieval both live, over 33 SAP calls.
+Vision reproduces all 84 recorded fields across the six documents exactly.
+
+---
+
 ## Documentation — `e336269`, `ae3a2e4`
 
 **Added** `README.md`: requirements, install, the two commands to run it, a

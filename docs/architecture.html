@@ -924,16 +924,23 @@
 
       <div class="scroller">
         <table>
-          <thead><tr><th>Knowledge base</th><th>Id</th><th>Contents</th></tr></thead>
+          <thead><tr><th>Knowledge base</th><th>Id</th><th>Type</th><th>Contents</th></tr></thead>
           <tbody>
-            <tr><td><b>SOPs</b></td><td class="mono">HRQMR9REUCexcd</td>
+            <tr><td><b>SOPs</b></td><td class="mono">HRQMR9REUC</td><td class="mono">MANAGED</td>
                 <td><span class="mono">AP-SOP-001</span> three-way match exception handling,
-                    duplicate invoice SOP</td></tr>
-            <tr><td><b>SAP API library</b></td><td class="mono">M6GBMOSKQX</td>
+                    <span class="mono">AP-SOP-002</span> duplicate invoice</td></tr>
+            <tr><td><b>SAP API library</b></td><td class="mono">M6GBMOSKQX</td><td class="mono">MANAGED</td>
                 <td>OpenAPI specifications for the OData services</td></tr>
           </tbody>
         </table>
       </div>
+
+      <p>
+        Both are <span class="mono">MANAGED</span>, which is not cosmetic: the
+        <code>Retrieve</code> call must pass <code>managedSearchConfiguration</code>, and
+        rejects <code>vectorSearchConfiguration</code> with a
+        <code>ValidationException</code>.
+      </p>
 
       <h3>The boundary that matters</h3>
       <p>
@@ -994,14 +1001,50 @@
 
       <h3>knowledge.py</h3>
       <ul>
-        <li><code>resolution_steps(sop_ref, exception_type)</code> &rarr; ordered steps, owner
-            and timeframe, from the SOP knowledge base.</li>
-        <li><code>find_odata_path(question)</code> &rarr; a concrete OData path, from the API
-            knowledge base.</li>
+        <li><code>guidance(sop_ref)</code> &rarr; ordered steps, owner and timeframe. The
+            repository copy of the clause, with the SOP knowledge base as the fallback.</li>
+        <li><code>odata_path(question)</code> &rarr; a concrete OData path, from the API
+            knowledge base, which has no local equivalent.</li>
       </ul>
       <p>
-        Both call <code>bedrock-agent-runtime.retrieve</code>. Retrieval runs only for
-        invoices that failed or warned, so a clean batch costs zero retrieval calls.
+        Retrieval runs only for invoices that failed or warned, so a clean batch costs zero
+        retrieval calls.
+      </p>
+
+      <h3>Which source answers, and why it is not the knowledge base</h3>
+      <p>
+        <code>guidance</code> reads the SOP markdown in the repository and treats the
+        knowledge base as the fallback. This was decided by testing against the live
+        knowledge base, not in advance.
+      </p>
+      <p>
+        The UI renders numbered steps with an owner and a timeframe, so a clause is only
+        useful whole. The managed chunker splits a clause's step table away from its
+        <span class="mono">### 6.6</span> heading; for a 6.6 query the top-scoring chunk was
+        6.5.3. Reassembling passages to compensate produced a correct title above another
+        clause's procedure. Parsing each passage separately stops that, but then returns
+        partial procedures &mdash; 3 of 7 steps for 6.3.
+      </p>
+      <p>
+        The repository copy is the same document the knowledge base indexes, whole and scoped
+        to one SOP, so it answers whenever it is deployed &mdash; and the common path then
+        makes no network call at all. <code>FORCE_SOP_RETRIEVAL=1</code> makes retrieval
+        drive the answer instead, for showing the path working.
+      </p>
+      <p>
+        Two guards apply to retrieved passages either way. They are parsed one at a time,
+        never concatenated, and they are filtered on the
+        <span class="mono">_document_title</span> metadata &mdash; sections 6.1 to 6.3 exist
+        in <b>both</b> SOPs, and the rules cite all three from
+        <span class="mono">AP-SOP-001</span>, so an unscoped passage parses cleanly as the
+        wrong clause.
+      </p>
+      <p>
+        The API knowledge base is retrieval end to end, exposed to the exception agent as the
+        <code>find_odata_service</code> tool. The answer there is an OpenAPI path key such as
+        <span class="mono">/A_PurchaseOrder('{PurchaseOrder}')</span>, not any URL in the
+        passage &mdash; the same specifications are full of
+        <span class="mono">help.sap.com</span> documentation links.
       </p>
     </section>
 
@@ -1009,14 +1052,30 @@
     <section id="budget">
       <h2><span class="h2num">07</span>Call budget</h2>
       <p>
-        A cold context build costs four to six calls. Two caches cut a six-invoice batch
-        from roughly 32 calls to about 14.
+        Measured on the six-invoice demo batch against the live system:
+        <b>33 SAP calls, 81 seconds</b>, with Bedrock vision and Knowledge Base retrieval
+        both live. With no AWS credentials, extraction comes from the recorded file and the
+        same batch takes <b>76 seconds</b>.
+      </p>
+      <p>
+        A cold context build costs four to six calls, and a single MCP round trip takes
+        several seconds. Call count is therefore not the lever; concurrency is.
       </p>
       <ul>
+        <li><b>Concurrent reads.</b> Each invoice's reads are independent, so they run in a
+            thread pool with one client each. Wall time tracks the slowest single invoice
+            rather than the sum: <b>202 seconds became 76</b>.</li>
+        <li><b>Concurrent extraction.</b> Each document is one Bedrock vision call of 7 to 10
+            seconds and depends on no other. <code>extract_batch</code> runs them in a pool of
+            <code>EXTRACT_CONCURRENCY</code> (default 6), taking the extraction phase from
+            <b>49.4 seconds to 11.7</b>. Results stay in input order, because the caller zips
+            them back against the file list and the reference number is fixed by position.</li>
         <li><b>Purchase order cache</b>, keyed by <code>(po, item)</code>. Two invoices against
-            the same PO read it once.</li>
+            the same PO read it once. On the demo batch every invoice targets a different PO,
+            so this one never hits.</li>
         <li><b>Vendor reference cache</b>, keyed by <code>InvoicingParty</code>. The demo batch
-            has two vendors, so the duplicate check costs 2 calls rather than 6.</li>
+            has two vendors, so the duplicate check costs 2 calls rather than 6. Worth having,
+            not worth quoting as the reason the batch is fast.</li>
       </ul>
       <p>
         The write phase is exactly one <code>POST</code> per passing invoice. No batching,

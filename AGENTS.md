@@ -98,9 +98,18 @@ Live smoke tests, which do reach SAP:
 
 ```bash
 cd src/backend && python sap.py          # read-only
-cd src/backend && python knowledge.py    # SOP parsing
+cd src/backend && python knowledge.py    # SOP parsing, and the knowledge base
+cd src/backend && python extract.py      # normalisation and batch ordering
 cd src/backend && python agent.py        # exception assistant
 ```
+
+`knowledge.py` and `extract.py` run fully without credentials — the Bedrock
+branches are exercised against a stub client, so the parsing, the fallbacks and
+the batch ordering are all checked offline. With credentials they additionally
+probe the live knowledge base, and `agent.py` makes real model calls.
+
+`knowledge.py` checks both settings of `FORCE_SOP_RETRIEVAL` on every run,
+whatever the environment says, so neither mode can rot unnoticed.
 
 ---
 
@@ -208,10 +217,24 @@ the code change when the code change is already large.
 
 ## 7. Constraints worth knowing before you start
 
-- **Bedrock may be unreachable.** Extraction, SOP retrieval and the Strands
+- **Bedrock may be unreachable.** Extraction, SOP guidance and the Strands
   chat each have a working fallback and select their provider automatically.
   `GET /api/health` reports which is live, and the UI shows it. Do not remove
   the fallbacks; do not present seeded data as live.
+- **SOP guidance reads the repository copy on purpose**, even when the
+  Knowledge Base is reachable. The managed chunker splits a clause's step table
+  away from its heading, so retrieval returns correct clauses with incomplete
+  procedures. Do not "fix" this by preferring retrieval without re-chunking the
+  S3 documents first, and never reassemble passages into one blob — that
+  produced a correct clause title above another clause's steps. See
+  `docs/LESSONS-LEARNED.md` §10.
+- **Retrieved passages must stay scoped to one document.** Sections 6.1 to 6.3
+  exist in both SOPs and the rules cite all three from `AP-SOP-001`, so an
+  unscoped passage parses cleanly as the wrong clause.
+- **Modules that read configuration at import must call `load_dotenv()`
+  themselves.** `extract.py` and `knowledge.py` both do. Relying on `api.py`
+  having loaded it first makes them report the wrong provider when run
+  directly.
 - **A single MCP round trip takes several seconds.** Reads are run
   concurrently for that reason. Adding a sequential read to `build_context`
   costs real demo time.

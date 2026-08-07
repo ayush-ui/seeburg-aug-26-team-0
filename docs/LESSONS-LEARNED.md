@@ -202,6 +202,96 @@ A generated recommendation does not outrank a stated requirement.
 
 ---
 
+## 10. The Bedrock paths were broken in three different ways
+
+They had never run. Credentials arrived on 7 August and all three failed, each
+for a different reason. Recorded in the order they surfaced, because each one
+was hidden behind the previous.
+
+**`boto3` was not in `requirements.txt`.** Every Bedrock provider checks
+`import boto3` and falls back on `ImportError`, so all three paths selected
+their local fallback on every machine, silently and by design. The fallbacks
+worked, `/api/health` reported honestly, and nothing looked wrong. That is
+exactly why the real defects underneath survived to the last day.
+
+**The retrieval call was malformed.** Both workshop knowledge bases are type
+`MANAGED`, and a managed knowledge base rejects `vectorSearchConfiguration`:
+
+```
+ValidationException: Incompatible configuration: vectorSearchConfiguration
+is not supported for managed knowledge bases. Use managedSearchConfiguration
+instead.
+```
+
+Worth noting what this error was *not*: not credentials, not a permission, not
+a wrong knowledge base id. Both ids were correct and `ACTIVE` all along. The
+error is precise and names its own fix — but only something holding
+credentials could ever see it.
+
+**Retrieval returned the wrong procedure.** This one was ours, and it is the
+one that mattered. Passages were joined into a single blob before parsing, so
+the section splitter took a heading from one chunk and a step table from
+another. "Vendor/Supplier Mismatch" came back above the goods-receipt
+procedure; "Tax and Freight Discrepancies" came back above `AP-SOP-002`'s
+duplicate-payment recovery steps. A clerk would have been shown the wrong
+instructions for a fraud-adjacent exception, under a heading that looked
+right.
+
+**Lesson.** A fallback that is good enough to demo is good enough to hide a
+broken primary path indefinitely. The fallback here is not a mock — it reads
+the same document — which made it *more* dangerous, not less, because there
+was no visible degradation to prompt anyone to look.
+
+### Why the repository copy still answers
+
+Once retrieval worked, it was worse than what it replaced. The managed chunker
+splits a clause's step table away from its `### 6.6` heading, and for a 6.6
+query the top-scoring chunk was 6.5.3. Parsing passages individually stops the
+fabrication but then returns partial procedures — 3 of 7 steps for 6.3, 2 of 5
+for 6.2.
+
+So the repository copy is authoritative and the knowledge base is the
+fallback, which also means the common path makes no network call at all.
+`FORCE_SOP_RETRIEVAL=1` flips it for a demo. This is not retrieval being
+useless: the API knowledge base has no local equivalent and is the only source
+for `odata_path`.
+
+### Sections 6.1 to 6.3 exist in both SOPs
+
+Found while adding the force flag, and it would have been a live defect.
+`AP-SOP-001 6.1` is Price Variance; `AP-SOP-002 6.1` is Automated ERP System
+Checks. The rules cite 6.1, 6.2 and 6.3 from `AP-SOP-001`, so a passage from
+the duplicate-invoice SOP parses cleanly as the wrong clause and reads as
+authoritative.
+
+Two fixes: the local parser now keys sections by document instead of
+concatenating both files into one namespace — previously the right answer won
+only by alphabetical accident — and retrieved passages are filtered on the
+`_document_title` metadata.
+
+### A URL is not an answer
+
+`odata_path` matched `https?://\S+` first, so it returned
+`https://help.sap.com/doc/.../OdataV2.pdf#page=64)"` — trailing punctuation
+included. The API knowledge base holds OpenAPI specifications, where the
+answer is a JSON key: `"/A_PurchaseOrder('{PurchaseOrder}')"`. A regex broad
+enough to match anything will match the wrong thing confidently.
+
+### `load_dotenv()` is not inherited
+
+`extract.py` and `knowledge.py` both read configuration into module constants
+at import, but neither called `load_dotenv()`. They worked under the server
+only because `api.py` loads the file before importing them. Run either
+directly and it reported `cached`, or used a stale knowledge base id, with a
+correctly filled `.env` sitting beside it. The first vision benchmark this
+produced was six cache reads at 0.0s each, reported as passing.
+
+**Lesson.** A module whose behaviour depends on import order will eventually
+be imported in the other order, and a timing of 0.0s deserves suspicion rather
+than celebration.
+
+---
+
 ## Architectural decisions and why
 
 | Decision | Reason |
@@ -221,9 +311,10 @@ A generated recommendation does not outrank a stated requirement.
 | Workaround | Why | Remove when |
 |---|---|---|
 | Custom MCP server instead of the managed one | The managed runtime fails its health check | The managed deployment is repaired |
-| `extractions.json` fallback | No AWS credentials locally, so Bedrock vision cannot run | Running somewhere with credentials |
-| SOP markdown parsed locally instead of Knowledge Base retrieval | Same | Same |
-| Grounded responder instead of the Strands agent | Same | Same |
+| `extractions.json` fallback | Bedrock vision needs AWS credentials, which not every machine has | Kept permanently — it is the offline demo path |
+| SOP markdown parsed locally instead of Knowledge Base retrieval | Retrieval returns partial step tables; the managed chunker splits a clause from its table | The S3 documents are re-chunked so a clause and its steps stay together |
+| Grounded responder instead of the Strands agent | `strands-agents` need not be installed, and the agent needs credentials | Kept permanently — same reason as the extraction cache |
+| Retrieved passages filtered on `_document_title` | Sections 6.1–6.3 exist in both SOPs, so a passage from the wrong one parses as the right clause | The knowledge base exposes the SOP id as retrievable metadata |
 | Status join in batches of 20 | `A_SuplrInvcItemPurOrdRef` carries no status and offers no navigation to its header | SAP exposes the status on the item, which it will not |
 | `admin` / `admin` | Real auth costs hours and scores nothing here | Never, for this event |
 
@@ -233,17 +324,29 @@ A generated recommendation does not outrank a stated requirement.
 
 Things a judge might reasonably ask about.
 
-- **The Bedrock paths have never run.** Extraction, Knowledge Base retrieval
-  and the Strands agent are code-complete and unverified. Their fallbacks are
-  what actually executes on the development machine.
+- **SOP retrieval is a fallback, not the live path.** The repository copy of
+  the clause answers, because the managed chunker returns partial step tables.
+  `FORCE_SOP_RETRIEVAL=1` makes retrieval drive the answer; the clause stays
+  correct but may carry fewer steps. The API knowledge base has no local
+  equivalent and is genuinely live.
 - **A newly uploaded, unseen document cannot be processed without Bedrock.**
   The extraction cache only answers for documents already recorded. The batch
   reports it explicitly rather than silently returning nothing.
+- **Document scoping depends on the SOP markdown being deployed.** Retrieved
+  passages are filtered on the source file name, and the mapping from
+  `AP-SOP-001` to that file name is built by reading the local documents. A
+  deployment without them cannot scope, and sections 6.1–6.3 are ambiguous
+  across the two SOPs.
+- **Vision extraction was verified once, on six documents.** All 84 fields
+  matched the recorded extractions exactly. That is one run against one set of
+  invoices from one supplier, not a measured accuracy rate.
 - **One purchase order line per invoice.** `Invoice` models a single line.
   Real Factory Price List invoices carry several.
 - **Batch state is in memory.** Restarting the backend loses it.
-- **76 seconds for six invoices.** Dominated by MCP round-trip latency, not by
-  our code.
+- **81 seconds for six invoices** with Bedrock vision and Knowledge Base
+  retrieval both live, over 33 SAP calls. Still dominated by MCP round-trip
+  latency: extraction is about 17s of it, and was 49s before `extract_batch`
+  was made concurrent. Without credentials the cached extractions make it 76s.
 - **No retry on transient SAP failures** in this client.
 - **`admin` / `admin` is not authentication.** No token, no server-side check.
 - **Tolerance thresholds are written in USD in the SOP** and applied to

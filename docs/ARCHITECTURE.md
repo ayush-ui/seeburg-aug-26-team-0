@@ -140,7 +140,7 @@ sequenceDiagram
     end
 
     Note over O,K: only for invoices that failed or warned
-    O->>K: resolution_steps(sop_ref)
+    O->>K: guidance(sop_ref)
     K-->>O: procedure, owner, timeframe from the SOP
 
     O-->>FE: batch id + consolidated summary
@@ -205,8 +205,10 @@ not exist.
 
 ### Call budget
 
-Measured on the six-invoice demo batch against the live system: **32 SAP calls,
-76 seconds**.
+Measured on the six-invoice demo batch against the live system: **33 SAP calls,
+81 seconds** with Bedrock vision and Knowledge Base retrieval both live. With
+no AWS credentials, extraction comes from the recorded file and the same batch
+takes **76 seconds**.
 
 Each `build_context` costs 4 to 6 calls, and a single MCP round trip takes
 several seconds - AgentCore cold paths plus SAP itself. Call count is therefore
@@ -215,11 +217,17 @@ not the lever; concurrency is.
 - **Concurrent reads.** Each invoice's reads are independent of every other
   invoice's, so they run in a thread pool with one client each. Wall time tracks
   the slowest single invoice rather than the sum: **202 seconds became 76**.
+- **Concurrent extraction.** The same argument applies to reading the
+  documents: each is one Bedrock vision call of 7 to 10 seconds and depends on
+  no other. `extract_batch` runs them in a pool of `EXTRACT_CONCURRENCY`
+  (default 6), which took the extraction phase from **49.4 seconds to 11.7**.
+  Results stay in input order, because the caller zips them back against the
+  file list and the reference number is fixed by position.
 - **Read caches** on the client, keyed by `(po, item)` and by `InvoicingParty`.
   These matter when a batch holds several invoices against the same purchase
   order. On the demo batch every invoice targets a different PO, so only the
-  vendor cache hits, saving 4 calls of 32. Worth having, not worth quoting as
-  the reason the batch is fast.
+  vendor cache hits, saving 4 calls. Worth having, not worth quoting as the
+  reason the batch is fast.
 
 The write phase is exactly one POST per passing invoice. No batching, because a
 partial failure must be attributable to one invoice.
@@ -261,10 +269,14 @@ nicety.
 Two Bedrock Knowledge Bases sit behind the orchestrator, each fed from an S3
 bucket. Both are already deployed.
 
-| Knowledge base | Id | Contents |
-|---|---|---|
-| SOPs | `HRQMR9REUCexcd` | `AP-SOP-001` three-way match exception handling, duplicate invoice SOP |
-| SAP API library | `M6GBMOSKQX` | OpenAPI specifications for the OData services |
+| Knowledge base | Id | Type | Contents |
+|---|---|---|---|
+| SOPs | `HRQMR9REUC` | `MANAGED` | `AP-SOP-001` three-way match exception handling, `AP-SOP-002` duplicate invoice |
+| SAP API library | `M6GBMOSKQX` | `MANAGED` | OpenAPI specifications for the OData services |
+
+Both are `MANAGED`, which is not cosmetic: the `Retrieve` call must pass
+`managedSearchConfiguration`, and rejects `vectorSearchConfiguration` with a
+`ValidationException`.
 
 ### The boundary that matters
 
@@ -308,12 +320,43 @@ was never hardcoded with.
 ### `knowledge.py`
 
 ```
-resolution_steps(sop_ref, exception_type) -> list[Step]   # SOP KB
-find_odata_path(question)                 -> str          # API KB
+guidance(sop_ref)    -> Guidance | None   # repository copy, SOP KB as fallback
+odata_path(question) -> str | None        # API KB, no local equivalent
 ```
 
-Both call `bedrock-agent-runtime.retrieve`. Retrieval runs only for invoices
-that failed or warned, so a clean batch costs zero retrieval calls.
+Both resolve through one provider, chosen once by whether `boto3` and AWS
+credentials are both present. Retrieval runs only for invoices that failed or
+warned, so a clean batch costs zero retrieval calls.
+
+### Which source answers, and why it is not the knowledge base
+
+`guidance` reads the SOP markdown in the repository and treats the knowledge
+base as the fallback. This is deliberate and was decided by testing against
+the live knowledge base, not in advance.
+
+The UI renders numbered steps with an owner and a timeframe, so a clause is
+only useful whole. The managed chunker splits a clause's step table away from
+its `### 6.6` heading; for a 6.6 query the top-scoring chunk was 6.5.3.
+Reassembling passages to compensate produced a correct title above another
+clause's procedure. Parsing each passage separately stops that, but then
+returns partial procedures — 3 of 7 steps for 6.3.
+
+The repository copy is the same document the knowledge base indexes, whole and
+scoped to one SOP, so it answers whenever it is deployed — and the common path
+then makes no network call at all. `FORCE_SOP_RETRIEVAL=1` makes retrieval
+drive the answer instead, for showing the path working.
+
+Two guards apply to retrieved passages either way. They are parsed one at a
+time, never concatenated, and they are filtered on the `_document_title`
+metadata — sections 6.1 to 6.3 exist in **both** SOPs, and the rules cite all
+three from `AP-SOP-001`, so an unscoped passage parses cleanly as the wrong
+clause.
+
+The API knowledge base has no local equivalent, so `odata_path` is retrieval
+end to end. It is exposed to the exception agent as the `find_odata_service`
+tool. The answer there is an OpenAPI path key such as
+`/A_PurchaseOrder('{PurchaseOrder}')`, not any URL in the passage — the same
+specifications are full of `help.sap.com` documentation links.
 
 ## Determinism and the tolerance table
 

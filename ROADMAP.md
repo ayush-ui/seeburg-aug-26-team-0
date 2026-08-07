@@ -41,11 +41,23 @@ currently the cheapest points available.
 
 ## Next — product
 
-- [ ] **Verify the Bedrock paths.** Extraction, Knowledge Base retrieval and
-      the Strands agent are code-complete but have never run: the development
-      machine has no AWS credentials. They need one pass from an environment
-      that has them, ideally the workshop VS Code Server. Until then their
-      fallbacks are what actually runs.
+- [x] **Verify the Bedrock paths** — done, 7 August 2026, against account
+      `922513818191`. All three ran: vision extraction reproduced all 84
+      recorded fields across the six documents exactly, Knowledge Base
+      retrieval returned real passages, and the Strands agent answered with
+      tool calls. It took three fixes to get there — see
+      `docs/LESSONS-LEARNED.md` §10. The fallbacks remain and still select
+      themselves automatically.
+- [ ] **Decide what SOP retrieval is for.** The repository copy answers today
+      because the managed chunker returns partial step tables, so the SOP
+      knowledge base is a fallback rather than the live path.
+      `FORCE_SOP_RETRIEVAL=1` flips it for a demo. Making retrieval the real
+      source needs the S3 documents re-chunked so a clause and its step table
+      stay together — a knowledge base change, not a code change.
+- [ ] **Scope retrieved passages by document id, not file name.** The filter
+      matches `_document_title` against the markdown file name, which only
+      works because the repository copy is deployed beside the code. A
+      deployment without it cannot build the mapping.
 - [ ] **Multi-line invoices.** `Invoice` currently models one purchase order
       line. Real Factory Price List invoices carry several. This touches
       `rules.py`, the park payload and the detail view.
@@ -62,10 +74,11 @@ currently the cheapest points available.
 
 ## Next — engineering
 
-- [ ] **Cut batch latency further.** 76 seconds for six invoices, dominated by
-      several seconds per MCP round trip. Concurrency took it from 202; the
-      next lever is either fewer reads per invoice or an OData `$batch`
-      request.
+- [ ] **Cut batch latency further.** 81 seconds for six invoices with the
+      Bedrock paths live, 76 without, still dominated by several seconds per
+      MCP round trip. Concurrency took the SAP reads from 202 to 76 and
+      extraction from 49.4 to 11.7; the next lever is either fewer reads per
+      invoice or an OData `$batch` request.
 - [ ] **Retry transient SAP failures** in `sap.py`. The workshop's MCP server
       retries internally; this client does not.
 - [ ] **Observability panel.** Pass and fail counts and time saved are named

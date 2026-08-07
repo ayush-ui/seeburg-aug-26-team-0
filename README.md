@@ -28,8 +28,9 @@ with the resolution steps their own SOP prescribes.
 | **Exceptions** | A separate queue with the failing rule, its SOP clause, resolution steps, and a chat scoped to that invoice |
 | **Reports** | The six reports `AP-SOP-001` section 9.3 already mandates, built from the batch that just ran |
 
-Measured on the six-invoice demo batch: **32 SAP calls, 76 seconds**, 5 parked
-and 1 exception.
+Measured on the six-invoice demo batch: **33 SAP calls, 81 seconds**, 5 parked
+and 1 exception, with Bedrock vision and Knowledge Base retrieval both live.
+Without AWS credentials the recorded extractions make it 76 seconds.
 
 ---
 
@@ -45,6 +46,18 @@ machine-to-machine auth, not IAM. Bedrock-backed features (vision extraction,
 Knowledge Base retrieval, the Strands agent) each fall back to a working local
 provider and switch over automatically when credentials appear. `GET
 /api/health` reports which provider is live, and the header shows it.
+
+With credentials, a six-invoice batch takes about 81 seconds; without them,
+extraction comes from the recorded file and it takes about 76.
+
+One deliberate exception to "Bedrock when available": SOP guidance is read from
+the SOP markdown in this repository even when the Knowledge Base is reachable.
+The managed chunker splits a clause's step table away from its heading, so
+retrieval returns correct clauses with only part of their procedure. The
+repository copy is the same document, whole. `FORCE_SOP_RETRIEVAL=1` flips it
+if you want to see retrieval driving the answer. The API Knowledge Base has no
+local equivalent and is always live. `docs/LESSONS-LEARNED.md` §10 has the
+detail.
 
 ---
 
@@ -151,6 +164,9 @@ matter:
 | `SAP_POSTING_DATE` | Must fall in an open posting period. `2025-03-15` on this system — today's date fails |
 | `INVOICE_REFERENCE_PREFIX` | Your AWS account id. Each posting is tagged `<prefix>-<n>`, unique per team and per invoice |
 | `INVOICE_SEQUENCE_START` | Bump it to get fresh references after a run, or the duplicate check trips |
+| `SOP_KNOWLEDGE_BASE_ID` / `API_KNOWLEDGE_BASE_ID` | The two Bedrock Knowledge Bases. List them with `aws bedrock-agent list-knowledge-bases` |
+| `FORCE_SOP_RETRIEVAL` | Set to `1` to make SOP guidance come from the Knowledge Base instead of the repository copy. See below |
+| `EXTRACT_CONCURRENCY` | Concurrent Bedrock vision reads per batch, default 6 |
 
 **SAP credentials are not in here.** They live in AWS Secrets Manager and are
 read only by the MCP server, so this process never sees a SAP password.
@@ -166,9 +182,11 @@ is in memory, deliberately, for a two-day build.
 Amazon Bedrock AgentCore Runtime, authenticated with Cognito client
 credentials.
 
-**AI** — Claude Sonnet 4.5 on Amazon Bedrock for document extraction; Bedrock
-Knowledge Bases for SOP and OData-specification retrieval; a Strands agent for
-the exception assistant. Each has a local fallback.
+**AI** — Claude Sonnet 4.5 on Amazon Bedrock for document extraction, read
+concurrently across a batch; two managed Bedrock Knowledge Bases for SOP and
+OData-specification retrieval; a Strands agent with four read-only tools for
+the exception assistant. Each has a local fallback, and none of them can
+overturn a verdict or write to SAP.
 
 **Frontend** — Vite, React, Material 3 design tokens, dark by default with
 light switchable. Roboto is vendored rather than fetched, so the demo works
