@@ -19,7 +19,7 @@ between sections rather than being deleted, so the reasoning survives.
 | `reports.py` — SOP section 9.3 reports | Built from the batch that just ran |
 | Front end — Intake, Approvals, Exceptions, Reports | Live against the backend |
 | CI — both suites plus a gitleaks scan | GitHub Actions |
-| `ARCHITECTURE.md` and `docs/architecture.html` | Kept in step |
+| `docs/ARCHITECTURE.md` and `docs/architecture.html` | Kept in step |
 
 ---
 
@@ -86,4 +86,4 @@ currently the cheapest points available.
 | **Inbound Delivery (VL31N)** | Creation over OData is environment-dependent. The workshop documents it as a production next step rather than a lab action, and we follow that. |
 | **Posting invoices for payment** | Writes are always parked (status `A`). A parked document creates no accounting entry and does not consume the purchase order, which is what makes this safe on a system shared with other teams. |
 | **Making the validator an agent** | It would be slower, non-reproducible and impossible to unit test. Verdicts stay deterministic. |
-| **Building our own MCP server from scratch** | The workshop's server already exposes a generic OData tool and is deployed. The managed AWS-for-SAP server is the documented alternative, and is unhealthy in this account — see `LESSONS-LEARNED.md`. |
+| **Building our own MCP server from scratch** | The workshop's server already exposes a generic OData tool and is deployed. The managed AWS-for-SAP server is the documented alternative, and is unhealthy in this account — see `docs/LESSONS-LEARNED.md`. |

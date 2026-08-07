@@ -14,7 +14,7 @@ approval it parks a Supplier Invoice (MIR7) for each that passes. Failures are
 skipped and explained in plain business language.
 
 The challenge brief is `challenges/topic-3-aws.md` in
-`dmi-hackathons/hackathon-seeburg-2026`. `ARCHITECTURE.md` here is the
+`dmi-hackathons/hackathon-seeburg-2026`. `docs/ARCHITECTURE.md` here is the
 authoritative design document; `docs/architecture.html` is the same content as
 a standalone page.
 
@@ -42,11 +42,13 @@ the wrong change. Push back or ask.
 ## 2. Repository layout
 
 ```
-ARCHITECTURE.md          Authoritative design. Update when the design changes.
+README.md                Start here: install, run, and where everything is.
+AGENTS.md                This file. Instructions for anyone working here.
+CLAUDE.md                Imports AGENTS.md.
 CHANGELOG.md             What shipped, newest first.
 ROADMAP.md               What is next, and what is deliberately not being done.
-LESSONS-LEARNED.md       What broke, what fixed it, what we cannot do.
-CLAUDE.md                Imports this file.
+docs/ARCHITECTURE.md     Authoritative design. Update when the design changes.
+docs/LESSONS-LEARNED.md  What broke, what fixed it, what we cannot do.
 docs/architecture.html   Standalone architecture page, self-contained.
 Invoices/                The inbox the backend reads. Demo documents live here.
 SOP/ (in src/backend/mcp) AP-SOP-001 and the duplicate-invoice SOP.
@@ -193,9 +195,9 @@ an incomplete commit.
 |---|---|
 | `CHANGELOG.md` | **Every** behavioural change. Newest entry first. Say what changed and why, in a sentence a teammate can read cold. |
 | `ROADMAP.md` | Something planned ships, becomes unnecessary, or a new gap appears. Move the item, do not delete it silently. |
-| `LESSONS-LEARNED.md` | A defect took more than a few minutes to understand, a workaround was needed, an architectural decision was reversed, or a limitation was discovered. |
-| `ARCHITECTURE.md` | Any change to components, data flow, call sequence, or the numbers it quotes. **Never leave a claimed number unmeasured** — this document has already carried a figure that was never true. |
-| `docs/architecture.html` | Whenever `ARCHITECTURE.md` changes. The two must agree. |
+| `docs/LESSONS-LEARNED.md` | A defect took more than a few minutes to understand, a workaround was needed, an architectural decision was reversed, or a limitation was discovered. |
+| `docs/ARCHITECTURE.md` | Any change to components, data flow, call sequence, or the numbers it quotes. **Never leave a claimed number unmeasured** — this document has already carried a figure that was never true. |
+| `docs/architecture.html` | Whenever `docs/ARCHITECTURE.md` changes. The two must agree. |
 | `.env.example` | A new environment variable is introduced. |
 | `README.md` | Setup, usage, or the tech stack changes. |
 
@@ -220,5 +222,5 @@ the code change when the code change is already large.
   and no server-side check. Say so in any documentation that mentions it.
 - **Batch state is in memory.** Restarting the backend loses it.
 
-See `LESSONS-LEARNED.md` before debugging anything SAP-shaped; most of the
+See `docs/LESSONS-LEARNED.md` before debugging anything SAP-shaped; most of the
 sharp edges are already written down there.

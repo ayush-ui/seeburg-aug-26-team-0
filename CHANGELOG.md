@@ -69,7 +69,7 @@ These help when a batch repeats a purchase order. On the demo batch every
 invoice targets a different one, so only the vendor cache hits and it saves
 4 calls of 32.
 
-**Fixed** `ARCHITECTURE.md`, which claimed those caches would cut 32 calls to
+**Fixed** `docs/ARCHITECTURE.md`, which claimed those caches would cut 32 calls to
 about 14. That was never true of this batch. The document now carries measured
 numbers.
 
